@@ -8,7 +8,7 @@ import textdistance
 
 import app
 from Arknights.addons.common import CommonAddon
-from Arknights.addons.contrib.common_cache import load_game_data
+from Arknights.addons.contrib.common_cache import load_game_data, get_activity_infos
 from Arknights.addons.record import RecordAddon
 from Arknights.addons.stage_navigator import StageNavigator, navigator
 from automator import AddonBase
@@ -43,10 +43,6 @@ def process_stages(stages):
     return stage_code_map, zone_linear_map
 
 
-def get_activities():
-    return load_game_data('activity_table')['basicInfo']
-
-
 def get_zones():
     return load_game_data('zone_table')['zones']
 
@@ -64,7 +60,7 @@ def get_stage(target_stage_code):
 
 def get_zone_description(zone_id):
     activity_id = zone_id.split('_')[0]
-    activities = get_activities()
+    activities = get_activity_infos()
     act_name = activities[activity_id]['name']
     zones = get_zones()
     zone_name = zones[zone_id]['zoneNameSecond']
@@ -73,7 +69,7 @@ def get_zone_description(zone_id):
 
 def get_activity_name(zone_id):
     activity_id = zone_id.split('_')[0]
-    activities = get_activities()
+    activities = get_activity_infos()
     return activities[activity_id]['name']
 
 
@@ -85,7 +81,7 @@ def get_zone_name(zone_id):
 
 def get_activity_info(zone_id):
     activity_id = zone_id.split('_')[0]
-    activities = get_activities()
+    activities = get_activity_infos()
     if activity_id not in activities:
         return None
     activity_info = activities[activity_id]
@@ -303,4 +299,4 @@ class ActivityAddOn(AddonBase):
 
 if __name__ == '__main__':
     from Arknights.configure_launcher import helper
-    helper.addon(ActivityAddOn).nav_and_combat('dh-9', 1)
+    helper.addon(ActivityAddOn).nav_and_combat('cw-10', 1)

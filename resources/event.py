@@ -22,7 +22,8 @@ EXTRA_KNOWN_ITEMS = [
     '31043',
     'charm_coin_2',
     'charm_r2',
-    'randomMaterial_1'
+    'randomMaterial_1',
+    'act24side_melding_4', 'act24side_melding_5', 'act24side_melding_3', 'act24side_melding_1', 'act24side_melding_2'
 ]
 
 FIXED_QUANTITY = [
@@ -46,6 +47,7 @@ FIXED_QUANTITY = [
     '印象',
 ]
 
+
 # ONE_OR_NONE = [
 #     '应急理智小样',
 #     '罗德岛物资补给',
@@ -64,7 +66,7 @@ def event_preprocess(stage: str, items: list[tuple[str, RecognizedItem]], exclud
         if item.name in FIXED_QUANTITY or item.name.startswith('@'):
             # 不加入汇报列表
             continue
-            
+
         # if name in ONE_OR_NONE:
         #     # 不使用企鹅数据验证规则进行验证
         #     exclude_from_validation.append(itemrecord)

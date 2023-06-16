@@ -77,7 +77,7 @@ def main():
         helper.addon(AutoClueAddOn).run()
         task_cache['auto_clue_time'] = int(time.time())
 
-    if not task_cache['get_credit']:
+    if datetime.now().hour > 20 or datetime.now().hour < 4:
         logger.info('===收取并使用信用点')
         helper.addon(AutoCreditStoreAddOn).run()
         task_cache['get_credit'] = True

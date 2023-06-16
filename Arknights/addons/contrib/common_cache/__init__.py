@@ -135,3 +135,7 @@ def update_inventory(helper: BaseAutomator, cache_key='%Y--%V'):
         json.dump(data, f)
     return data
 
+
+def get_activity_infos():
+    return load_game_data('activity_table')['basicInfo']
+

@@ -173,6 +173,26 @@ class StageNavigator(AddonBase):
             else:
                 raise KeyError((target, partition))
 
+    def _reco_current_episode(self):
+        from imgreco import stage_ocr
+        episode_tag_rect = (35.000*self.vh, 39.306*self.vh, 49.444*self.vh, 42.083*self.vh)
+        current_episode_str = ''
+        for _ in range(3):
+            screenshot = self.screenshot()
+            current_episode_tag = screenshot.crop(episode_tag_rect)
+            current_episode_str = stage_ocr.do_img_ocr(current_episode_tag)
+            self.logger.info(f'当前章节: {current_episode_str}')
+            if not current_episode_str.startswith('EPISODE'):
+                self.delay(1)
+                continue
+            episode_str = current_episode_str[7:]
+            if episode_str.isdigit():
+                return int(current_episode_str[7:])
+            else:
+                self.delay(1)
+        self.logger.error(f'章节识别失败, current_episode_str: {current_episode_str}')
+        raise RuntimeError('recognition failed')
+
     def find_and_tap_episode_by_ocr(self, target):
         import imgreco.common
         import imgreco.map
@@ -183,21 +203,13 @@ class StageNavigator(AddonBase):
             self.logger.error(f'未能定位章节区域, target: {target}')
             raise RuntimeError('recognition failed')
         vw, vh = imgreco.common.get_vwvh(self.viewport)
-        episode_tag_rect = tuple(map(int, (34.861*vh, 40.139*vh, 50.139*vh, 43.194*vh)))
         next_ep_region_rect = (6.389*vh, 73.750*vh, 33.889*vh, 80.417*vh)
         prev_ep_region_rect = (6.389*vh, 15.556*vh, 33.889*vh, 22.083*vh)
         current_ep_rect = (50*vw+19.907*vh, 28.426*vh, 50*vw+63.426*vh, 71.944*vh)
         episode_move = (400 * self.viewport[1] / 1080)
 
         while True:
-            screenshot = self.screenshot()
-            current_episode_tag = screenshot.crop(episode_tag_rect)
-            current_episode_str = imgreco.stage_ocr.do_img_ocr(current_episode_tag)
-            self.logger.info(f'当前章节: {current_episode_str}')
-            if not current_episode_str.startswith('EPISODE'):
-                self.logger.error(f'章节识别失败, current_episode_str: {current_episode_str}')
-                raise RuntimeError('recognition failed')
-            current_episode = int(current_episode_str[7:])
+            current_episode = self._reco_current_episode()
             current_region = ep2region.get(current_episode)
             if current_region is None:
                 self.logger.error(f'未能定位章节区域, current_episode: {current_episode}')
@@ -214,13 +226,8 @@ class StageNavigator(AddonBase):
             move = min(abs(current_episode - target), 2) * episode_move * (1 if current_episode > target else -1)
             self.swipe_screen(move, 10, self.viewport[0] // 4 * 3)
             self.delay(0.5)
-            screenshot = self.screenshot()
-            current_episode_tag = screenshot.crop(episode_tag_rect)
-            current_episode_str = imgreco.stage_ocr.do_img_ocr(current_episode_tag)
-            self.logger.info(f'当前章节: {current_episode_str}')
-            current_episode = int(current_episode_str[7:])
-
-        self.logger.info(f'进入章节: {current_episode_str}')
+            current_episode = self._reco_current_episode()
+        self.logger.info(f'进入章节: {current_episode}')
         self.tap_rect(current_ep_rect)
 
     def find_and_tap_stage_by_ocr(self, partition, target, partition_map=None):

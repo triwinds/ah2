@@ -9,7 +9,7 @@ import imgreco.main
 from Arknights.addons.common import CommonAddon
 from Arknights.addons.contrib.activity import get_stage_map
 from Arknights.addons.contrib.base import pil2cv, crop_cv_by_rect
-from Arknights.addons.contrib.common_cache import load_game_data
+from Arknights.addons.contrib.common_cache import get_activity_infos
 from Arknights.addons.record import RecordAddon
 from Arknights.addons.stage_navigator import StageNavigator, navigator
 from automator import AddonBase
@@ -25,17 +25,12 @@ special_zone_actions = {
 }
 
 
-@lru_cache(maxsize=1)
-def get_activity_infos():
-    return load_game_data('activity_table')['basicInfo']
-
-
 @lru_cache()
 def get_available_activity(display_type=None):
     activity_infos = get_activity_infos()
     name_set = set()
     for aid, info in activity_infos.items():
-        if info.get('displayType') in {'SIDESTORY', 'BRANCHLINE'}:
+        if info.get('displayType') in {'SIDESTORY', 'BRANCHLINE', 'NONE'}:
             if info['displayType'] == 'BRANCHLINE' or info.get('isReplicate'):
                 raw_name = info['name'][:-3] if info.get('isReplicate') else info['name']
                 if display_type is None or display_type == info['displayType']:
@@ -258,7 +253,7 @@ class StartSpStageAddon(AddonBase):
 
 if __name__ == '__main__':
     from Arknights.configure_launcher import helper
-    helper.addon(StartSpStageAddon).run('sv-8')
-    helper.addon(StartSpStageAddon).run('tw-6')
-    helper.addon(StartSpStageAddon).run('wr-1')
-    helper.addon(StartSpStageAddon).run('of-f4')
+    helper.addon(StartSpStageAddon).run('cw-10')
+    # helper.addon(StartSpStageAddon).run('tw-6')
+    # helper.addon(StartSpStageAddon).run('wr-1')
+    # helper.addon(StartSpStageAddon).run('of-f4')

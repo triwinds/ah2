@@ -185,6 +185,7 @@ def get_recruit_database_by_game_data():
         tag_list += position_map.get(character['position'], [])
         tag_list += character['tagList']
         # print((character_name, character['rarity'], tag_list))
+        character['rarity'] = int(character['rarity'][5:]) - 1
         if character['rarity'] == 0:
             tag_list.append('支援机械')
         result.append((character_name, character['rarity'], tag_list))
