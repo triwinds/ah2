@@ -158,7 +158,7 @@ class ActivityAddOn(AddonBase):
         rewards = target_stage['stageDropInfo']['displayDetailRewards']
         # print(rewards)
         stage_drops = [all_items_map[reward["id"]]["name"] for reward in rewards
-                       if reward["type"] == "MATERIAL" and reward["dropType"] == 2]
+                       if reward["type"] == "MATERIAL" and reward["dropType"] == "NORMAL"]
         record_name = f'goto_{target_stage["stageType"]}_{target_stage["zoneId"]}'
         if query_only:
             return self.addon(RecordAddon).get_record_path(record_name) or has_success_detect(target_stage["zoneId"])
@@ -299,4 +299,4 @@ class ActivityAddOn(AddonBase):
 
 if __name__ == '__main__':
     from Arknights.configure_launcher import helper
-    helper.addon(ActivityAddOn).nav_and_combat('cw-10', 1)
+    helper.addon(ActivityAddOn).nav_and_combat('he-7', 0)
