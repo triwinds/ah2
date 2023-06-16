@@ -39,26 +39,11 @@ def save_cache(task_cache):
         json.dump(task_cache, f, ensure_ascii=False)
 
 
-def main():
-    print('do common task.')
-    helper = get_helper()
-    task_cache = load_cache()
-
+def old_infrast_task(helper):
     logger.info('===基建收菜')
     helper.addon(RecordAddon).try_replay_record('get_building')
     logger.info('===清空无人机')
     helper.addon(AutoShiftAddOn).clear_drones('b302')
-
-    # 公招
-    helper.addon(AutoRecruitAddOn).hire_all()
-    if not task_cache['auto_recruit']:
-        AutoRecruitAddOn(helper).auto_recruit(4)
-        task_cache['auto_recruit'] = True
-    else:
-        AutoRecruitAddOn(helper).clear_refresh()
-
-    helper.addon(QuestAddon).clear_task()
-
     logger.info('===基建换班')
     retry_count = 0
     while True:
@@ -71,6 +56,21 @@ def main():
             if retry_count > 3:
                 raise e
 
+
+def main():
+    print('do common task.')
+    helper = get_helper()
+    task_cache = load_cache()
+
+    # 公招
+    helper.addon(AutoRecruitAddOn).hire_all()
+    if not task_cache['auto_recruit']:
+        AutoRecruitAddOn(helper).auto_recruit(4)
+        task_cache['auto_recruit'] = True
+    else:
+        AutoRecruitAddOn(helper).clear_refresh()
+
+    helper.addon(QuestAddon).clear_task()
     auto_clue_time = task_cache.get('auto_clue_time', 0)
     if auto_clue_time + 3 * 3600 < time.time():
         logger.info('===收取并应用线索')
@@ -81,6 +81,11 @@ def main():
         logger.info('===收取并使用信用点')
         helper.addon(AutoCreditStoreAddOn).run()
         task_cache['get_credit'] = True
+
+    # old_infrast_task(helper)
+    from Arknights.addons.contrib.maa import maa_infrast
+    maa_infrast()
+
     save_cache(task_cache)
 
 
