@@ -58,13 +58,13 @@ def clear_sanity_by_red_ticket():
 def clear_sanity_by_item(only_activity=False):
     logger.info('clear_sanity_by_item')
     # helper.addon(StageNavigator).navigate_and_combat('latest', 1000)
-    helper.addon(StageNavigator).navigate_and_combat('HE-7', 1000)
+    # helper.addon(StageNavigator).navigate_and_combat('HE-7', 1000)
     # helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
 
-    # from Arknights.addons.contrib.grass_on_aog import GrassAddOn
-    # if not helper.addon(GrassAddOn).run():
-    #     helper.addon(AutoChips).run()
-    #     helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
+    from Arknights.addons.contrib.grass_on_aog import GrassAddOn
+    if not helper.addon(GrassAddOn).run():
+        helper.addon(AutoChips).run()
+        helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
 
 
 def send_by_tg_bot(chat_id, title, content):
