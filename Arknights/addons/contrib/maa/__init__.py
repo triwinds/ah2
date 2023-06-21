@@ -91,7 +91,7 @@ def ttt():
         time.sleep(0)
 
 
-def maa_infrast(timeout_seconds=300):
+def maa_infrast(timeout_seconds=1200):
     Updater(path, Version.Stable).update()
     Asst.load(path=path)
     st = time.time()
