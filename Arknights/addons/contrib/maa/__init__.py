@@ -109,7 +109,9 @@ def maa_infrast(timeout_seconds=1200):
         'facility': [
             "Mfg", "Trade", "Control", "Power", "Reception", "Office", "Dorm"
         ],
-        'drones': "Money"
+        # "_NotUse"、"Money"、"SyntheticJade"、"CombatRecord"、"PureGold"、"OriginStone"、"Chip"
+        'drones': "OriginStone",
+        "replenish": True
     })
     asst.start()
     while asst.running() and time.time() - st < timeout_seconds:

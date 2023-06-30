@@ -108,6 +108,11 @@ def pil_to_cv_gray_img(pil_img):
     return cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
 
 
+def pil_to_cv_img(pil_img, mode=cv2.COLOR_RGB2BGR):
+    arr = np.asarray(pil_img, dtype=np.uint8)
+    return cv2.cvtColor(arr, mode)
+
+
 def cut_tag(screen, w, pt):
     img_h, img_w = screen.shape[:2]
     tag_w, tag_h = 130, 36
@@ -139,12 +144,14 @@ def remove_holes(img):
 
 def recognize_stage_tags(pil_screen, template, ccoeff_threshold=0.75):
     screen = pil_to_cv_gray_img(pil_screen)
+    screen_for_match_template = preprocess_for_icon2(pil_screen) if template.shape == stage_icon2.shape else screen
     img_h, img_w = screen.shape[:2]
     ratio = 1080 / img_h
     if ratio != 1:
         ratio = 1080 / img_h
         screen = cv2.resize(screen, (int(img_w * ratio), 1080))
-    result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+        screen_for_match_template = cv2.resize(screen_for_match_template, (int(img_w * ratio), 1080))
+    result = cv2.matchTemplate(screen_for_match_template, template, cv2.TM_CCOEFF_NORMED)
     loc = np.where(result >= ccoeff_threshold)
     h, w = template.shape[:2]
     img_h, img_w = screen.shape[:2]
@@ -203,11 +210,38 @@ def do_img_ocr(pil_img):
     return do_tag_ocr(img)
 
 
+def preprocess_for_icon2(pil_img):
+    cv_img = pil_img.array
+    img_hsv = pil_to_cv_img(pil_img, cv2.COLOR_BGR2HSV)
+    # blue = [99, 255, 252]
+    lower_blue = np.array([80, 240, 240])
+    upper_blue = np.array([110, 255, 255])
+    mask = cv2.inRange(img_hsv, lower_blue, upper_blue)
+    # The black region in the mask has the value of 0,
+    # so when multiplied with original image removes all non-blue regions
+    result = cv2.bitwise_and(cv_img, cv_img, mask=mask)
+    # cv2.imshow('test', result)
+    # cv2.waitKey()
+    return cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+
+
 stage_icon1 = pil_to_cv_gray_img(resources.load_image('stage_ocr/stage_icon1.png'))
-stage_icon2 = pil_to_cv_gray_img(resources.load_image('stage_ocr/stage_icon2.png'))
+stage_icon2 = preprocess_for_icon2(resources.load_image('stage_ocr/stage_icon2.png'))
 stage_icon_ex1 = pil_to_cv_gray_img(resources.load_image('stage_ocr/stage_icon_ex1.png'))
 normal_icons = [stage_icon1, stage_icon2]
 extra_icons = [stage_icon_ex1]
+
+
+def recognize_with_ppocr(pil_screen, tags_map):
+    from imgreco.common import convert_to_cv
+    from imgreco.ppocr_utils import get_ppocr, calc_box_center
+    res = get_ppocr().detect_and_ocr(convert_to_cv(pil_screen), drop_score=0.7)
+    for box in res:
+        if '-' not in box.ocr_text:
+            continue
+        pos = calc_box_center(box.box)
+        if pil_screen.size[0] * 0.1 < pos[0] < pil_screen.size[0] * 0.9:
+            tags_map[box.ocr_text] = pos
 
 
 def recognize_all_screen_stage_tags(pil_screen, allow_extra_icons=False):
@@ -217,6 +251,6 @@ def recognize_all_screen_stage_tags(pil_screen, allow_extra_icons=False):
             for tag in recognize_stage_tags(pil_screen, icon, 0.75):
                 tags_map[tag['tag_str']] = tag['pos']
     for icon in normal_icons:
-        for tag in recognize_stage_tags(pil_screen, icon):
+        for tag in recognize_stage_tags(pil_screen, icon, 0.75):
             tags_map[tag['tag_str']] = tag['pos']
     return tags_map
