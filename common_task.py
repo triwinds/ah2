@@ -71,20 +71,20 @@ def main():
         AutoRecruitAddOn(helper).clear_refresh()
 
     helper.addon(QuestAddon).clear_task()
-    auto_clue_time = task_cache.get('auto_clue_time', 0)
-    if auto_clue_time + 3 * 3600 < time.time():
-        logger.info('===收取并应用线索')
-        helper.addon(AutoClueAddOn).run()
-        task_cache['auto_clue_time'] = int(time.time())
+    # auto_clue_time = task_cache.get('auto_clue_time', 0)
+    # if auto_clue_time + 3 * 3600 < time.time():
+    #     logger.info('===收取并应用线索')
+    #     helper.addon(AutoClueAddOn).run()
+    #     task_cache['auto_clue_time'] = int(time.time())
+
+    # old_infrast_task(helper)
+    from Arknights.addons.contrib.maa import maa_infrast
+    maa_infrast()
 
     if datetime.now().hour > 20 or datetime.now().hour < 4:
         logger.info('===收取并使用信用点')
         helper.addon(AutoCreditStoreAddOn).run()
         task_cache['get_credit'] = True
-
-    # old_infrast_task(helper)
-    from Arknights.addons.contrib.maa import maa_infrast
-    maa_infrast()
 
     save_cache(task_cache)
 

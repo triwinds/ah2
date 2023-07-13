@@ -48,11 +48,16 @@ def get_activities():
     return load_game_data('activity_table')['basicInfo']
 
 
-def get_available_activities():
+def get_available_activities(no_mini_story=True):
     activity_table = get_activities()
     cur_time = time.time()
-    return [activity_table[aid] for aid in activity_table
-            if activity_table[aid]['startTime'] < cur_time < activity_table[aid]['endTime']]
+    if no_mini_story:
+        return [activity_table[aid] for aid in activity_table
+                if activity_table[aid]['startTime'] < cur_time < activity_table[aid]['endTime']
+                and activity_table[aid]['type'] != 'MINISTORY']
+    else:
+        return [activity_table[aid] for aid in activity_table
+                if activity_table[aid]['startTime'] < cur_time < activity_table[aid]['endTime']]
 
 
 def get_available_activity_stages(force_update=False):
