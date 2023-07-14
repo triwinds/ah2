@@ -105,6 +105,7 @@ def maa_infrast(timeout_seconds=1200):
     else:
         print('连接失败')
         exit()
+    # https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev/docs/3.1-%E9%9B%86%E6%88%90%E6%96%87%E6%A1%A3.md
     asst.append_task('Infrast', {
         'facility': [
             "Mfg", "Trade", "Control", "Power", "Reception", "Office", "Dorm"
