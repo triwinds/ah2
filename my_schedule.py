@@ -20,6 +20,7 @@ from Arknights.addons.contrib.restart_bluestacks import restart_all, check_blues
 
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None
+sanity_mode: str = 'grass'
 
 
 def do_jiaomie():
@@ -61,10 +62,13 @@ def clear_sanity_by_item(only_activity=False):
     # helper.addon(StageNavigator).navigate_and_combat('HE-7', 1000)
     # helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
 
-    from Arknights.addons.contrib.grass_on_aog import GrassAddOn
-    if not helper.addon(GrassAddOn).run():
-        helper.addon(AutoChips).run()
-        helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
+    if sanity_mode == 'grass':
+        from Arknights.addons.contrib.grass_on_aog import GrassAddOn
+        if not helper.addon(GrassAddOn).run():
+            helper.addon(AutoChips).run()
+            helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
+    else:
+        helper.addon(StageNavigator).navigate_and_combat(sanity_mode, 1000)
 
 
 def send_by_tg_bot(chat_id, title, content):
@@ -122,5 +126,8 @@ def main():
 
 
 if __name__ == '__main__':
+    sanity_mode = input('sanity mode[grass/<stage_code>] default as grass: ')
+    if not sanity_mode:
+        sanity_mode = 'grass'
     main()
     # print(is_in_event())
