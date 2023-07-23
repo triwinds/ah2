@@ -118,6 +118,7 @@ def maa_infrast(timeout_seconds=1200):
     while asst.running() and time.time() - st < timeout_seconds:
         time.sleep(0.5)
     asst.stop()
+    del asst
 
 
 if __name__ == '__main__':
