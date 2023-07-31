@@ -57,7 +57,7 @@ class Updater:
 
     @staticmethod
     def _request_github_api(url, retry):
-        request_resource = ["https://api.github.com/", "https://api.kgithub.com/"]
+        request_resource = ["https://pcfrp.e6ex.com/ghapi/", "https://api.github.com/", "https://api.kgithub.com/"]
         for _ in range(retry):
             for resource in request_resource:
                 try:
