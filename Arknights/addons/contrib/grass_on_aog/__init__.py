@@ -189,7 +189,7 @@ class GrassAddOn(AddonBase):
                     and len(item['itemId']) > 4:
                 my_items_with_count.append({'name': item['name'],
                           'itemId': item['itemId'],
-                          'count': my_items.get(item['itemId'], 0),
+                          'count': my_items.get(item['itemId'], 0) or 0,
                           'rarity': item['rarity']})
         my_items_with_count = sorted(my_items_with_count, key=lambda x: x['count'])
         stage = get_stage(aog_cache, my_items_with_count, prefer_activity=app.config.grass_on_aog.prefer_activity_stage)
