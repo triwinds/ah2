@@ -8,7 +8,7 @@ from typing import Union
 from urllib import request
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
-
+import requests
 from .asst import Asst
 from .utils import Version
 
@@ -61,8 +61,9 @@ class Updater:
         for _ in range(retry):
             for resource in request_resource:
                 try:
-                    response = request.urlopen(Request(url=resource + url, headers=Updater.headers), timeout=20)
-                    data = response.read().decode('utf-8')
+                    response = requests.get(resource + url, headers=Updater.headers, timeout=20)
+                    response.encoding = 'utf-8'
+                    data = response.text
                     Updater.custom_print(f'访问成功，URL: {resource + url}')
                     return data
                 except (HTTPError, URLError) as e:
