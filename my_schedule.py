@@ -16,11 +16,12 @@ from Arknights.addons.stage_navigator import StageNavigator
 from Arknights.configure_launcher import reconnect_helper, get_helper
 from automator import BaseAutomator
 from imgreco.itemdb import update_net
+from Arknights.addons.contrib.maa import maa_rouge_like, shutdown_maa
 from Arknights.addons.contrib.restart_bluestacks import restart_all, check_bluestacks_is_alive, close_bluestacks
+from common_config import common_config
 
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None
-sanity_mode: str = 'grass'
 
 
 def do_jiaomie():
@@ -80,6 +81,7 @@ def send_by_tg_bot(chat_id, title, content):
 
 def do_works():
     global helper
+    shutdown_maa()
     update_cache()
     # 重启 adb server, 以免产生奇怪的 bug
     try:
@@ -94,8 +96,12 @@ def do_works():
         common_task.main()
         logger.info(f'finish at: {datetime.now()}')
         time.sleep(60)
-        close_bluestacks()
-
+        if common_config.rouge_like:
+            from Arknights.addons.common import CommonAddon
+            helper.addon(CommonAddon).back_to_main()
+            maa_rouge_like('Sami')
+        else:
+            close_bluestacks()
     except Exception as e:
         send_by_tg_bot(app.get('notify/chat_id'), 'arh-fail', traceback.format_exc())
         print(traceback.format_exc())
@@ -115,8 +121,8 @@ def update_cache():
 
 
 def main():
-    os.environ['HTTP_PROXY'] = 'http://localhost:7890'
-    os.environ['HTTPS_PROXY'] = 'http://localhost:7890'
+    os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
+    os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
     do_works()
     scheduler = BlockingScheduler(timezone='Asia/Shanghai')
     # scheduler.add_job(recruit, 'cron', day_of_week='0,1,2', hour='19', minute=0)
@@ -128,6 +134,6 @@ def main():
 if __name__ == '__main__':
     sanity_mode = input('sanity mode[grass/<stage_code>] default as grass: ')
     if not sanity_mode:
-        sanity_mode = 'grass'
+        sanity_mode = common_config.sanity_mode
     main()
     # print(is_in_event())

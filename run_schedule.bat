@@ -32,5 +32,7 @@ rem 切换至 ArknightsAutoHelper 所在位置
 :path
 cd>nul 2>nul /D %~dp0
 rem call venv\Scripts\activate.bat
+set http_proxy=http://127.0.0.1:7890
+set https_proxy=http://127.0.0.1:7890
 
 poetry run python my_schedule.py

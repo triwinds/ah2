@@ -11,7 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 app.init()
-game_data_url = app.get('game_data_url', 'https://raw.githubusercontent.com'
+game_data_url = app.get('game_data_url', 'https://rawgit.e6ex.com'
                                          '/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel')
 
 
@@ -25,7 +25,17 @@ inventory_cache_file = app.cache_path.joinpath('inventory_items_cache.json')
 
 def update_net_cache(cache_file_name, url):
     filepath = get_cache_path(cache_file_name)
-    resp = requests.get(url)
+    rc = 0
+    resp = None
+    while rc <= 5:
+        rc += 1
+        resp = requests.get(url)
+        if resp.status_code / 100 == 2:
+            break
+        logger.warning(f'{cache_file_name}, resp.status_code: {resp.status_code}')
+    if resp.status_code / 100 != 2:
+        logger.error(f'{cache_file_name}, resp content: {resp.text}')
+        raise RuntimeError(f'Fail to get data from url: {url}')
     with open(filepath, 'wb') as f:
         f.write(resp.content)
 

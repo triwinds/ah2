@@ -6,6 +6,11 @@ from Arknights.addons.contrib.maa.asst.asst import Asst
 from Arknights.addons.contrib.maa.asst.utils import Message, Version, InstanceOptionType
 from Arknights.addons.contrib.maa.asst.updater import Updater
 from Arknights.addons.contrib.maa.asst.emulator import Bluestacks
+import logging
+
+
+logger = logging.getLogger(__name__)
+asst: Asst | None = None
 
 
 @Asst.CallBackType
@@ -19,82 +24,12 @@ def my_callback(msg, details, arg):
 path = pathlib.Path(r'D:\software\MeoAssistantArknights')
 
 
-def ttt():
-
-    # 请设置为存放 dll 文件及资源的路径
-
-
-    # 设置更新器的路径和目标版本并更新
-    Updater(path, Version.Stable).update()
-
-    # 外服需要再额外传入增量资源路径，例如
-    # incremental_path=path / 'resource' / 'global' / 'YoStarEN'
+def init_maa():
+    global asst
+    if asst:
+        return asst
+    Updater(path, Version.Beta).update()
     Asst.load(path=path)
-
-    # 若需要获取详细执行信息，请传入 callback 参数
-    # 例如 asst = Asst(callback=my_callback)
-    asst = Asst()
-
-    # 设置额外配置
-    # 触控方案配置
-    asst.set_instance_option(InstanceOptionType.touch_type, 'maatouch')
-    # 暂停下干员
-    # asst.set_instance_option(InstanceOptionType.deployment_with_pause, '1')
-
-    # 启动模拟器。例如启动蓝叠模拟器的多开Pie64_1，并等待30s
-    # Bluestacks.launch_emulator_win(r'C:\Program Files\BlueStacks_nxt\HD-Player.exe', 30, "Pie64_1")
-
-    # 获取Hyper-v蓝叠的adb port
-    # port = Bluestacks.get_hyperv_port(r"C:\ProgramData\BlueStacks_nxt\bluestacks.conf", "Pie64_1")
-
-    # 请自行配置 adb 环境变量，或修改为 adb 可执行程序的路径
-    if asst.connect('adb.exe', '127.0.0.1:5555'):
-        print('连接成功')
-    else:
-        print('连接失败')
-        exit()
-
-    # 任务及参数请参考 docs/集成文档.md
-
-    asst.append_task('StartUp')
-    asst.append_task('Fight', {
-        'stage': '',
-        'report_to_penguin': True,
-        # 'penguin_id': '1234567'
-    })
-    asst.append_task('Recruit', {
-        'select': [4],
-        'confirm': [3, 4],
-        'times': 4
-    })
-    asst.append_task('Infrast', {
-        'facility': [
-            "Mfg", "Trade", "Control", "Power", "Reception", "Office", "Dorm"
-        ],
-        'drones': "Money"
-    })
-    asst.append_task('Visit')
-    asst.append_task('Mall', {
-        'shopping': True,
-        'buy_first': ['招聘许可', '龙门币'],
-        'blacklist': ['家具', '碳'],
-    })
-    asst.append_task('Award')
-    # asst.append_task('Copilot', {
-    #     'filename': './GA-EX8-raid.json',
-    #     'formation': False
-    # })
-    # asst.append_task('Custom', {"task_names": ["AwardBegin"]})
-    asst.start()
-
-    while asst.running():
-        time.sleep(0)
-
-
-def maa_infrast(timeout_seconds=1200):
-    Updater(path, Version.Stable).update()
-    Asst.load(path=path)
-    st = time.time()
     port = Bluestacks.get_hyperv_port(r"C:\ProgramData\BlueStacks_nxt\bluestacks.conf", "Nougat64")
 
     # 若需要获取详细执行信息，请传入 callback 参数
@@ -104,22 +39,65 @@ def maa_infrast(timeout_seconds=1200):
         print('连接成功')
     else:
         print('连接失败')
-        exit()
+        raise RuntimeError('maa 模拟器连接失败')
+    return asst
+
+
+def maa_infrast(timeout_seconds=1200, shutdown_maa_after_finish=True):
+    logger.info('starting maa infrast task...')
+    asst = init_maa()
+    # 开发文档
     # https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev/docs/3.1-%E9%9B%86%E6%88%90%E6%96%87%E6%A1%A3.md
     asst.append_task('Infrast', {
         'facility': [
             "Mfg", "Trade", "Control", "Power", "Reception", "Office", "Dorm"
         ],
         # "_NotUse"、"Money"、"SyntheticJade"、"CombatRecord"、"PureGold"、"OriginStone"、"Chip"
-        'drones': "SyntheticJade",
+        'drones': "Money",
         "replenish": True
     })
     asst.start()
-    while asst.running() and time.time() - st < timeout_seconds:
-        time.sleep(0.5)
+    wait_maa_task_finish(timeout_seconds)
+    if shutdown_maa_after_finish:
+        shutdown_maa()
+
+
+def wait_maa_task_finish(timeout_seconds):
+    global asst
+    st = time.time()
+    if not asst:
+        raise RuntimeError('maa instance not started.')
+    if timeout_seconds > 0:
+        while asst.running() and time.time() - st < timeout_seconds:
+            time.sleep(0.5)
+    else:
+        while asst.running():
+            time.sleep(0.5)
     asst.stop()
-    del asst
+
+
+def maa_rouge_like(theme):
+    logger.info('starting maa rouge like task...')
+    asst = init_maa()
+    asst.append_task('Roguelike', {
+        "theme": theme
+    })
+    asst.start()
+    # wait_maa_task_finish(-1)
+
+
+def shutdown_maa():
+    global asst
+    if asst:
+        asst.stop()
+        logger.info('shutdown maa...')
+        del asst
+        asst = None
 
 
 if __name__ == '__main__':
+    import time
+    maa_rouge_like('Sami')
+    time.sleep(60)
+    shutdown_maa()
     maa_infrast()

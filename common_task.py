@@ -14,6 +14,7 @@ from Arknights.addons.quest import QuestAddon
 from Arknights.addons.record import RecordAddon
 from Arknights.configure_launcher import get_helper
 from imgreco.itemdb import update_net
+from common_config import common_config
 
 logger = logging.getLogger(__file__)
 task_cache_path = app.cache_path.joinpath('common_task_cache.json')
@@ -79,7 +80,9 @@ def main():
 
     # old_infrast_task(helper)
     from Arknights.addons.contrib.maa import maa_infrast
-    maa_infrast()
+    from Arknights.addons.common import CommonAddon
+    helper.addon(CommonAddon).back_to_main()
+    maa_infrast(shutdown_maa_after_finish=not common_config.rouge_like)
 
     if datetime.now().hour > 20 or datetime.now().hour < 4:
         logger.info('===收取并使用信用点')
