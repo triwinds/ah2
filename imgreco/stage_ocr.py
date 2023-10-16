@@ -248,9 +248,9 @@ def recognize_all_screen_stage_tags(pil_screen, allow_extra_icons=False):
     tags_map = {}
     if allow_extra_icons:
         for icon in extra_icons:
-            for tag in recognize_stage_tags(pil_screen, icon, 0.75):
+            for tag in recognize_stage_tags(pil_screen, icon, 0.8):
                 tags_map[tag['tag_str']] = tag['pos']
     for icon in normal_icons:
-        for tag in recognize_stage_tags(pil_screen, icon, 0.75):
+        for tag in recognize_stage_tags(pil_screen, icon, 0.8):
             tags_map[tag['tag_str']] = tag['pos']
     return tags_map

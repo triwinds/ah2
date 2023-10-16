@@ -261,9 +261,9 @@ class AutoRecruitAddOn(OldMixin):
                 self.addon(RecordAddon).replay_custom_record('set_3h50m')
             else:
                 self.tap_point((466, 286), 0)
-            if rarity > 1:
+            if rarity > 2:
                 self.tap_back()
-                logger.info(f"{current_slot} 号位置出现 4 星以上干员, 选择标签: {tags_choose}, 跳过此位置.")
+                logger.info(f"{current_slot} 号位置出现 6 星干员, 选择标签: {tags_choose}, 跳过此位置.")
                 continue
             for tag in tags_choose:
                 self.tap_rect(rect_map[tag])
