@@ -72,13 +72,6 @@ def clear_sanity_by_item(only_activity=False):
         helper.addon(StageNavigator).navigate_and_combat(sanity_mode, 1000)
 
 
-def send_by_tg_bot(chat_id, title, content):
-    # @shadowfox_MsgCat_bot
-    result = requests.post('https://msgcat.shadowfox.workers.dev/sendMsg',
-                           json={'chatId': chat_id, 'title': title, 'content': content})
-    return result
-
-
 def do_works():
     global helper
     shutdown_maa()
@@ -103,7 +96,8 @@ def do_works():
         else:
             close_bluestacks()
     except Exception as e:
-        send_by_tg_bot(app.get('notify/chat_id'), 'arh-fail', traceback.format_exc())
+        from util.msg_sender import send_by_tg_bot
+        send_by_tg_bot('arh-fail', traceback.format_exc())
         print(traceback.format_exc())
 
 

@@ -263,6 +263,9 @@ class AutoRecruitAddOn(OldMixin):
                 self.tap_point((466, 286), 0)
             if rarity > 2:
                 self.tap_back()
+                from util.msg_sender import send_by_tg_bot
+                send_by_tg_bot('公招出 6 星了!',
+                               f'{current_slot} 号位置出现 6 星干员, 选择标签: {tags_choose}, 跳过此位置.')
                 logger.info(f"{current_slot} 号位置出现 6 星干员, 选择标签: {tags_choose}, 跳过此位置.")
                 continue
             for tag in tags_choose:
