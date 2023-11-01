@@ -1,7 +1,7 @@
 import time
 
 import requests
-
+from requests_cache import CachedSession
 import app
 from Arknights.addons.contrib.common_cache import load_inventory, load_aog_data, load_game_data
 from Arknights.addons.stage_navigator import StageNavigator, custom_stage
@@ -11,7 +11,7 @@ import logging
 
 
 logger = logging.getLogger(__name__)
-
+session = CachedSession(app.cache_path.joinpath('yituliu_cache'))
 
 desc = f"""
 {__file__}
@@ -30,21 +30,7 @@ cache_key 控制缓存的频率, 默认每周读取一次库存, 如果需要手
 # cache_key = '%Y-%m-%d'  # cache by day
 cache_key = '%Y--%V'    # cache by week
 
-
-aog_cache_file = app.cache_path.joinpath('aog_cache.json')
 inventory_cache_file = app.cache_path.joinpath('inventory_items_cache.json')
-
-
-def order_stage(item):
-    if item['lowest_ap_stages']['normal'] and item['lowest_ap_stages']['event']:
-        stage_type = 'lowest_ap_stages'
-    elif item['balanced_stages']['normal'] and item['balanced_stages']['event']:
-        stage_type = 'balanced_stages'
-    else:
-        stage_type = 'drop_rate_first_stages'
-    event = item[stage_type]['event'][0] if item[stage_type]['event'] else None
-    normal = item[stage_type]['normal'][0]
-    return event if event and event['efficiency'] >= normal['efficiency'] else normal
 
 
 def get_activities():
@@ -146,19 +132,15 @@ def get_stage(t3_item_map, my_items, prefer_activity=True):
             if filtered_t3_items:
                 return get_stage_with_action('auto_t3', my_items, filtered_t3_items)
             else:
-                filtered_t3_items = filter_items_with_activity(t3_item_map, available_activity_stages)
-                if filtered_t3_items:
-                    return get_stage_with_action('auto_t3', my_items, filtered_t3_items)
-                else:
-                    stage = filter_latest_activity_t3_item_stage(my_items, available_activity_stages)
-                    if stage:
-                        logger.info(f'没有在 aog 中找到活动关卡相关的材料, 尝试刷最近活动的 t3 材料关卡 [{stage}]')
-                        return stage
-                logger.info('没有在 aog 中找到活动关卡相关的材料, 这可能是因为 aog 数据还没有更新, 或者这次活动关卡的效率还不如普通关卡.')
-                logger.info('可以试试在一段时间后删除 cache/aog_cache.json 以强制刷新 aog 数据缓存.')
-                no_aog_data_action = app.config.grass_on_aog.no_aog_data_action
-                logger.info(f'no_aog_data_action: {no_aog_data_action}.')
-                return get_stage_with_action(no_aog_data_action, my_items, t3_item_map)
+                stage = filter_latest_activity_t3_item_stage(my_items, available_activity_stages)
+                if stage:
+                    logger.info(f'没有在 aog 中找到活动关卡相关的材料, 尝试刷最近活动的 t3 材料关卡 [{stage}]')
+                    return stage
+            logger.info('没有在 aog 中找到活动关卡相关的材料, 这可能是因为 aog 数据还没有更新, 或者这次活动关卡的效率还不如普通关卡.')
+            logger.info('可以试试在一段时间后删除 cache/aog_cache.json 以强制刷新 aog 数据缓存.')
+            no_aog_data_action = app.config.grass_on_aog.no_aog_data_action
+            logger.info(f'no_aog_data_action: {no_aog_data_action}.')
+            return get_stage_with_action(no_aog_data_action, my_items, t3_item_map)
     return get_stage_with_action(normal_action, my_items, t3_item_map)
 
 
@@ -170,24 +152,24 @@ def get_stage_with_action(action, my_items, t3_item_map):
             t3_item = t3_item_map.get(my_item['name'])
             if t3_item:
                 logger.info('require item: %s, owned: %s' % (my_item['name'], my_item['count']))
-                return order_stage(t3_item)['code']
+                return t3_item['stageCode']
     else:
         logger.info(f'根据配置, 刷 [{action}].')
         return action
 
 
 def get_t3_item_map_from_yituliu():
-    # doc: https://yituliu.site/about/api
+    # doc: https://github.com/Arknights-yituliu/BackEndV3/blob/main/src/main/java/com/lhs/controller/StageController.java
     # item_cn_name: item_info
     res = {}
-    resp = requests.get('https://backend.yituliu.site/stage/t3?expCoefficient=0.625')
+    resp = requests.get('https://backend.yituliu.site/stage/t3/v2')
     data = resp.json()['data']
     for l1 in data:
-        for item in l1:
+        for item in l1['stageResultList']:
             tmp = res.get(item['itemName'])
             if not tmp:
                 res[item['itemName']] = item
-            elif item['apExpect'] > tmp['apExpect']:
+            elif item['stageEfficiency'] > tmp['stageEfficiency']:
                 res[item['itemName']] = item
     return res
 
@@ -223,3 +205,6 @@ __all__ = ['GrassAddOn']
 if __name__ == '__main__':
     from Arknights.configure_launcher import helper
     helper.addon(GrassAddOn).run()
+    # t3_item_map = get_t3_item_map_from_yituliu()
+    # for item_name in t3_item_map:
+    #     print(item_name, t3_item_map[item_name]['stageCode'])
