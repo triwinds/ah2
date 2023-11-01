@@ -1,4 +1,7 @@
 import time
+
+import requests
+
 import app
 from Arknights.addons.contrib.common_cache import load_inventory, load_aog_data, load_game_data
 from Arknights.addons.stage_navigator import StageNavigator, custom_stage
@@ -39,9 +42,9 @@ def order_stage(item):
         stage_type = 'balanced_stages'
     else:
         stage_type = 'drop_rate_first_stages'
-    event = item[stage_type]['event'][0]
+    event = item[stage_type]['event'][0] if item[stage_type]['event'] else None
     normal = item[stage_type]['normal'][0]
-    return event if event['efficiency'] >= normal['efficiency'] else normal
+    return event if event and event['efficiency'] >= normal['efficiency'] else normal
 
 
 def get_activities():
@@ -90,9 +93,13 @@ def get_available_activity_stages(force_update=False):
     return available_stage_codes
 
 
-def filter_items_with_activity(t3_items, available_activity_stages):
-    filtered_t3_items = [item for item in t3_items if order_stage(item)['code'] in available_activity_stages]
-    logger.info(f'Filtered t3 items: {[item["name"] for item in filtered_t3_items]}')
+def filter_items_with_activity(t3_item_map, available_activity_stages):
+    filtered_t3_items = {}
+    for item_name in t3_item_map:
+        item = t3_item_map[item_name]
+        if item['stageCode'] in available_activity_stages:
+            filtered_t3_items[item_name] = item
+    logger.info(f'Filtered t3 items: {filtered_t3_items.keys()}')
     return filtered_t3_items
 
 
@@ -127,22 +134,19 @@ def filter_latest_activity_t3_item_stage(my_items, available_activity_stages):
                 return item_stage_map[my_item['itemId']]['code']
 
 
-def get_stage(aog_items, my_items, prefer_activity=True):
-    t3_items = aog_items['tier']['t3']
+def get_stage(t3_item_map, my_items, prefer_activity=True):
     normal_action = app.config.grass_on_aog.normal_action
     if prefer_activity:
         available_activity_stages = set(get_available_activity_stages())
         if not available_activity_stages:
             logger.debug('No available activity stage, skip filtering.')
-            return get_stage_with_action(normal_action, my_items, t3_items)
+            return get_stage_with_action(normal_action, my_items, t3_item_map)
         else:
-            filtered_t3_items = filter_items_with_activity(t3_items, available_activity_stages)
+            filtered_t3_items = filter_items_with_activity(t3_item_map, available_activity_stages)
             if filtered_t3_items:
                 return get_stage_with_action('auto_t3', my_items, filtered_t3_items)
             else:
-                logger.info('Refresh aog data.')
-                t3_items = load_aog_data(True)['tier']['t3']
-                filtered_t3_items = filter_items_with_activity(t3_items, available_activity_stages)
+                filtered_t3_items = filter_items_with_activity(t3_item_map, available_activity_stages)
                 if filtered_t3_items:
                     return get_stage_with_action('auto_t3', my_items, filtered_t3_items)
                 else:
@@ -154,22 +158,38 @@ def get_stage(aog_items, my_items, prefer_activity=True):
                 logger.info('可以试试在一段时间后删除 cache/aog_cache.json 以强制刷新 aog 数据缓存.')
                 no_aog_data_action = app.config.grass_on_aog.no_aog_data_action
                 logger.info(f'no_aog_data_action: {no_aog_data_action}.')
-                return get_stage_with_action(no_aog_data_action, my_items, t3_items)
-    return get_stage_with_action(normal_action, my_items, t3_items)
+                return get_stage_with_action(no_aog_data_action, my_items, t3_item_map)
+    return get_stage_with_action(normal_action, my_items, t3_item_map)
 
 
-def get_stage_with_action(action, my_items, t3_items):
+def get_stage_with_action(action, my_items, t3_item_map):
     if action == 'none' or action is None:
         logger.info('根据配置, 不执行任何操作.')
     elif action == 'auto_t3':
         for my_item in my_items:
-            for t3_item in t3_items:
-                if t3_item['name'] == my_item['name']:
-                    logger.info('require item: %s, owned: %s' % (my_item['name'], my_item['count']))
-                    return order_stage(t3_item)['code']
+            t3_item = t3_item_map.get(my_item['name'])
+            if t3_item:
+                logger.info('require item: %s, owned: %s' % (my_item['name'], my_item['count']))
+                return order_stage(t3_item)['code']
     else:
         logger.info(f'根据配置, 刷 [{action}].')
         return action
+
+
+def get_t3_item_map_from_yituliu():
+    # doc: https://yituliu.site/about/api
+    # item_cn_name: item_info
+    res = {}
+    resp = requests.get('https://backend.yituliu.site/stage/t3?expCoefficient=0.625')
+    data = resp.json()['data']
+    for l1 in data:
+        for item in l1:
+            tmp = res.get(item['itemName'])
+            if not tmp:
+                res[item['itemName']] = item
+            elif item['apExpect'] > tmp['apExpect']:
+                res[item['itemName']] = item
+    return res
 
 
 class GrassAddOn(AddonBase):
@@ -178,7 +198,7 @@ class GrassAddOn(AddonBase):
         exclude_names = app.config.grass_on_aog.exclude
         self.logger.info('不刷以下材料: %r', exclude_names)
         self.logger.info('加载库存信息...')
-        aog_cache = load_aog_data(cache_key=cache_key)
+        t3_item_map = get_t3_item_map_from_yituliu()
 
         my_items = load_inventory(self.helper, cache_key=cache_key)
         all_items = arkplanner.get_all_items()
@@ -192,7 +212,7 @@ class GrassAddOn(AddonBase):
                           'count': my_items.get(item['itemId'], 0) or 0,
                           'rarity': item['rarity']})
         my_items_with_count = sorted(my_items_with_count, key=lambda x: x['count'])
-        stage = get_stage(aog_cache, my_items_with_count, prefer_activity=app.config.grass_on_aog.prefer_activity_stage)
+        stage = get_stage(t3_item_map, my_items_with_count, prefer_activity=app.config.grass_on_aog.prefer_activity_stage)
         if stage:
             return self.addon(StageNavigator).navigate_and_combat(stage, 1000)
 
