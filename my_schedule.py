@@ -129,5 +129,9 @@ if __name__ == '__main__':
     sanity_mode = input('sanity mode[grass/<stage_code>] default as grass: ')
     if not sanity_mode:
         sanity_mode = common_config.sanity_mode
+    elif sanity_mode == '1':
+        sanity_mode = '1-7'
+    elif sanity_mode == 'g':
+        sanity_mode = 'grass'
     main()
     # print(is_in_event())

@@ -30,11 +30,12 @@ def init_maa():
         return asst
     Updater(path, Version.Beta).update()
     Asst.load(path=path)
-    port = Bluestacks.get_hyperv_port(r"C:\ProgramData\BlueStacks_nxt\bluestacks.conf", "Nougat64")
+    port = Bluestacks.get_hyperv_port(r"D:\BlueStacks_nxt\bluestacks.conf", "Pie64")
 
     # 若需要获取详细执行信息，请传入 callback 参数
     # 例如 asst = Asst(callback=my_callback)
     asst = Asst()
+    print(port)
     if asst.connect('adb.exe', f'127.0.0.1:{port}'):
         print('连接成功')
     else:
