@@ -19,8 +19,12 @@ _callback_backward_map: Dict[str, List[Dict]] = {}
 def my_callback(msg, details, arg):
     m = Message(msg)
     d = json.loads(details.decode('utf-8'))
-    print(m, d, arg)
-    handle_maa_callback_detail(d)
+    # print(m, d, arg)
+    if m == Message.TaskChainStart:
+        logger.info(f'task {d.get("taskchain")} started.')
+    elif m == Message.TaskChainCompleted:
+        logger.info(f'task {d.get("taskchain")} finished.')
+    handle_maa_callback_detail(m, d)
 
 
 def _update_backward(detail: Dict):
@@ -30,7 +34,7 @@ def _update_backward(detail: Dict):
         li.pop(0)
 
 
-def handle_maa_callback_detail(detail: Dict):
+def handle_maa_callback_detail(msg: Message, detail: Dict):
     _update_backward(detail)
     if detail.get('what') == 'RecruitResult':
         details = detail['details']
