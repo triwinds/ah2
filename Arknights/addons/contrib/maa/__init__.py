@@ -1,7 +1,8 @@
 import json
 import pathlib
+from util.msg_sender import send_by_tg_bot
+from typing import Dict, List
 import time
-
 from Arknights.addons.contrib.maa.asst.asst import Asst
 from Arknights.addons.contrib.maa.asst.utils import Message, Version, InstanceOptionType
 from Arknights.addons.contrib.maa.asst.updater import Updater
@@ -10,43 +11,59 @@ import logging
 
 
 logger = logging.getLogger(__name__)
-asst: Asst | None = None
+_asst: Asst | None = None
+_callback_backward_map: Dict[str, List[Dict]] = {}
 
 
 @Asst.CallBackType
 def my_callback(msg, details, arg):
     m = Message(msg)
     d = json.loads(details.decode('utf-8'))
-
     print(m, d, arg)
+    handle_maa_callback_detail(d)
+
+
+def _update_backward(detail: Dict):
+    li = _callback_backward_map.get(detail.get('uuid'), [])
+    li.append(detail)
+    if len(li) > 5:
+        li.pop(0)
+
+
+def handle_maa_callback_detail(detail: Dict):
+    _update_backward(detail)
+    if detail.get('what') == 'RecruitResult':
+        details = detail['details']
+        if details['level'] == 6:
+            tags_choose = details['result'][0]['tags']
+            send_by_tg_bot('公招出 6 星了!', f'选择标签: {tags_choose}')
 
 
 path = pathlib.Path(r'D:\software\MeoAssistantArknights')
 
 
 def init_maa():
-    global asst
-    if asst:
-        return asst
+    global _asst
+    if _asst:
+        return _asst
     Updater(path, Version.Beta).update()
     Asst.load(path=path)
     port = Bluestacks.get_hyperv_port(r"D:\BlueStacks_nxt\bluestacks.conf", "Pie64")
 
     # 若需要获取详细执行信息，请传入 callback 参数
     # 例如 asst = Asst(callback=my_callback)
-    asst = Asst()
+    _asst = Asst(callback=my_callback)
     print(port)
-    if asst.connect('adb.exe', f'127.0.0.1:{port}'):
+    if _asst.connect('adb.exe', f'127.0.0.1:{port}'):
         print('连接成功')
     else:
         print('连接失败')
         raise RuntimeError('maa 模拟器连接失败')
-    return asst
+    return _asst
 
 
-def maa_infrast(timeout_seconds=1200, shutdown_maa_after_finish=True):
-    logger.info('starting maa infrast task...')
-    asst = init_maa()
+def maa_infrast(asst: Asst):
+    logger.info('add maa infrast task...')
     # 开发文档
     # https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev/docs/3.1-%E9%9B%86%E6%88%90%E6%96%87%E6%A1%A3.md
     asst.append_task('Infrast', {
@@ -57,24 +74,44 @@ def maa_infrast(timeout_seconds=1200, shutdown_maa_after_finish=True):
         'drones': "Money",
         "replenish": True
     })
-    asst.start()
-    wait_maa_task_finish(timeout_seconds)
-    if shutdown_maa_after_finish:
-        shutdown_maa()
 
 
-def wait_maa_task_finish(timeout_seconds):
-    global asst
+def maa_award(asst: Asst):
+    logger.info('add maa award task...')
+    asst.append_task('Award')
+
+
+def maa_mall(asst: Asst):
+    logger.info('add maa Mall task...')
+    asst.append_task('Mall', {
+        "shopping": True,
+        "buy_first": ["招聘许可", "龙门币"],
+        "blacklist": ["加急许可", "家具零件"],
+    })
+
+
+def maa_recruit(asst: Asst):
+    logger.info('add maa recruit task...')
+    asst.append_task('Recruit', {
+        "refresh": True,
+        "select": [5, 4, 1],
+        "confirm": [5, 4, 3, 1],
+        "times": 4,
+    })
+
+
+def wait_maa_task_finish(timeout_seconds=1200):
+    global _asst
     st = time.time()
-    if not asst:
+    if not _asst:
         raise RuntimeError('maa instance not started.')
     if timeout_seconds > 0:
-        while asst.running() and time.time() - st < timeout_seconds:
+        while _asst.running() and time.time() - st < timeout_seconds:
             time.sleep(0.5)
     else:
-        while asst.running():
+        while _asst.running():
             time.sleep(0.5)
-    asst.stop()
+    _asst.stop()
 
 
 def maa_rouge_like(theme):
@@ -88,12 +125,12 @@ def maa_rouge_like(theme):
 
 
 def shutdown_maa():
-    global asst
-    if asst:
-        asst.stop()
+    global _asst
+    if _asst:
+        _asst.stop()
         logger.info('shutdown maa...')
-        del asst
-        asst = None
+        del _asst
+        _asst = None
 
 
 if __name__ == '__main__':
@@ -101,4 +138,3 @@ if __name__ == '__main__':
     maa_rouge_like('Sami')
     time.sleep(60)
     shutdown_maa()
-    maa_infrast()

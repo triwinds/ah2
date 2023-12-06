@@ -63,14 +63,14 @@ def main():
     task_cache = load_cache()
 
     # 公招
-    helper.addon(AutoRecruitAddOn).hire_all()
-    if not task_cache['auto_recruit']:
-        AutoRecruitAddOn(helper).auto_recruit(4)
-        task_cache['auto_recruit'] = True
-    else:
-        AutoRecruitAddOn(helper).clear_refresh()
+    # helper.addon(AutoRecruitAddOn).hire_all()
+    # if not task_cache['auto_recruit']:
+    #     AutoRecruitAddOn(helper).auto_recruit(4)
+    #     task_cache['auto_recruit'] = True
+    # else:
+    #     AutoRecruitAddOn(helper).clear_refresh()
 
-    helper.addon(QuestAddon).clear_task()
+    # helper.addon(QuestAddon).clear_task()
     # auto_clue_time = task_cache.get('auto_clue_time', 0)
     # if auto_clue_time + 3 * 3600 < time.time():
     #     logger.info('===收取并应用线索')
@@ -82,10 +82,10 @@ def main():
     helper.addon(CommonAddon).back_to_main()
     os.system('python maa_task.py')
 
-    if datetime.now().hour > 20 or datetime.now().hour < 4:
-        logger.info('===收取并使用信用点')
-        helper.addon(AutoCreditStoreAddOn).run()
-        task_cache['get_credit'] = True
+    # if datetime.now().hour > 20 or datetime.now().hour < 4:
+    #     logger.info('===收取并使用信用点')
+    #     helper.addon(AutoCreditStoreAddOn).run()
+    #     task_cache['get_credit'] = True
 
     save_cache(task_cache)
 
