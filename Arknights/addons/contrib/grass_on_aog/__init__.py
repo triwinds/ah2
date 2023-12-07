@@ -169,7 +169,7 @@ def get_t3_item_map_from_yituliu():
             tmp = res.get(item['itemName'])
             if not tmp:
                 res[item['itemName']] = item
-            elif item['stageEfficiency'] > tmp['stageEfficiency']:
+            elif item['apExpect'] < tmp['apExpect']:
                 res[item['itemName']] = item
     return res
 
