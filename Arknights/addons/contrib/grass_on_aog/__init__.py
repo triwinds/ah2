@@ -163,7 +163,7 @@ def get_t3_item_map_from_yituliu():
     # item_cn_name: item_info
     res = {}
     resp = requests.get('https://backend.yituliu.site/stage/t3/v2')
-    data = resp.json()['data']
+    data = resp.json()['data']['recommendedStageList']
     for l1 in data:
         for item in l1['stageResultList']:
             tmp = res.get(item['itemName'])
