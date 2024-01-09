@@ -52,7 +52,8 @@ def init_maa():
         return _asst
     Updater(path, Version.Beta).update()
     Asst.load(path=path)
-    port = Bluestacks.get_hyperv_port(r"D:\BlueStacks_nxt\bluestacks.conf", "Pie64")
+    # port = Bluestacks.get_hyperv_port(r"C:\Program Files\BlueStacks_nxt\bluestacks.conf", "Pie64")
+    port = 5555
 
     # 若需要获取详细执行信息，请传入 callback 参数
     # 例如 asst = Asst(callback=my_callback)

@@ -68,6 +68,9 @@ def clear_sanity_by_item(only_activity=False):
         if not helper.addon(GrassAddOn).run():
             helper.addon(AutoChips).run()
             helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
+    elif sanity_mode == '1-7':
+        helper.addon(AutoChips).run()
+        helper.addon(StageNavigator).navigate_and_combat(sanity_mode, 1000)
     else:
         helper.addon(StageNavigator).navigate_and_combat(sanity_mode, 1000)
 
