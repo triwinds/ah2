@@ -81,9 +81,9 @@ def do_works():
     update_cache()
     # 重启 adb server, 以免产生奇怪的 bug
     try:
+        os.system('adb kill-server')
         if not check_bluestacks_is_alive():
             restart_all()
-        os.system('adb kill-server')
         reconnect_helper()
         helper = get_helper()
         update_net()

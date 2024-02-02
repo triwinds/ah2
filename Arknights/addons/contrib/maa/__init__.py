@@ -76,7 +76,7 @@ def maa_infrast(asst: Asst):
             "Mfg", "Trade", "Control", "Power", "Reception", "Office", "Dorm"
         ],
         # "_NotUse"、"Money"、"SyntheticJade"、"CombatRecord"、"PureGold"、"OriginStone"、"Chip"
-        'drones': "OriginStone",
+        'drones': "SyntheticJade",
         "replenish": True
     })
 
