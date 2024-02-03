@@ -10,7 +10,7 @@ from util.richlog import get_logger
 file_root = os.path.realpath(os.path.dirname(__file__)) + '/'
 start_img = Image.open(file_root + 'start.png').convert('L')
 login_img = Image.open(file_root + 'login.png').convert('L')
-rich_logger = get_logger('restart_bluestacks')
+rich_logger = get_logger('emulator_manager')
 logger = logging.getLogger(__name__)
 
 
@@ -62,6 +62,17 @@ def start_bluestacks():
     time.sleep(60)
 
 
+def check_emulator_is_alive():
+    if os.name == 'nt':
+        return check_bluestacks_is_alive()
+    return check_redroid_is_alive()
+
+
+def check_redroid_is_alive():
+    output = subprocess.run(['docker ps -a'], capture_output=True)
+    return 'redroid' in output.stdout.decode('utf-8')
+
+
 def check_bluestacks_is_alive():
     output = subprocess.run(['tasklist'], capture_output=True)
     # print(output.stdout.decode('gbk'))
@@ -81,9 +92,30 @@ def close_bluestacks():
         logger.info('bluestacks stopped.')
 
 
+def close_redroid():
+    path = os.getcwd()
+    os.chdir('/root/redroid/')
+    logger.info('closing redroid...')
+    os.system('docker-compose down')
+    os.chdir(path)
+
+
+def start_redroid():
+    path = os.getcwd()
+    os.chdir('/root/redroid/')
+    logger.info('starting redroid...')
+    os.system('docker-compose up -d')
+    time.sleep(60000)
+    os.chdir(path)
+
+
 def restart_all():
-    close_bluestacks()
-    start_bluestacks()
+    if os.name == 'nt':
+        close_bluestacks()
+        start_bluestacks()
+    else:
+        close_redroid()
+        start_redroid()
     start_and_login_arknights()
 
 

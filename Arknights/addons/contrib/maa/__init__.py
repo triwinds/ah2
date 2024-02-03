@@ -43,13 +43,15 @@ def handle_maa_callback_detail(msg: Message, detail: Dict):
             send_by_tg_bot('公招出 6 星了!', f'选择标签: {tags_choose}')
 
 
-path = pathlib.Path(r'D:\software\MeoAssistantArknights')
-
-
 def init_maa():
     global _asst
     if _asst:
         return _asst
+    import os
+    if os.name == 'nt':
+        path = pathlib.Path(r'D:\software\MeoAssistantArknights')
+    else:
+        path = pathlib.Path(r'/root/redroid/maa')
     Updater(path, Version.Beta).update()
     Asst.load(path=path)
     # port = Bluestacks.get_hyperv_port(r"C:\Program Files\BlueStacks_nxt\bluestacks.conf", "Pie64")
@@ -59,7 +61,7 @@ def init_maa():
     # 例如 asst = Asst(callback=my_callback)
     _asst = Asst(callback=my_callback)
     print(port)
-    if _asst.connect('adb.exe', f'127.0.0.1:{port}'):
+    if _asst.connect('adb', f'127.0.0.1:{port}'):
         print('连接成功')
     else:
         print('连接失败')

@@ -17,7 +17,7 @@ from Arknights.configure_launcher import reconnect_helper, get_helper
 from automator import BaseAutomator
 from imgreco.itemdb import update_net
 from Arknights.addons.contrib.maa import maa_rouge_like, shutdown_maa
-from Arknights.addons.contrib.restart_bluestacks import restart_all, check_bluestacks_is_alive, close_bluestacks
+from Arknights.addons.contrib.emulator_manager import restart_all, check_bluestacks_is_alive, close_bluestacks
 from common_config import common_config
 
 logger = logging.getLogger(__file__)
