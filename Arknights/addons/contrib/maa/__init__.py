@@ -24,6 +24,7 @@ def my_callback(msg, details, arg):
         logger.info(f'task {d.get("taskchain")} started.')
     elif m == Message.TaskChainCompleted:
         logger.info(f'task {d.get("taskchain")} finished.')
+    print(m, d)
     handle_maa_callback_detail(m, d)
 
 
@@ -52,6 +53,8 @@ def init_maa():
         path = pathlib.Path(r'D:\software\MeoAssistantArknights')
     else:
         path = pathlib.Path(r'/root/redroid/maa')
+    os.environ['http_proxy'] = 'http://127.0.0.1:7890'
+    os.environ['https_proxy'] = 'http://127.0.0.1:7890'
     Updater(path, Version.Beta).update()
     Asst.load(path=path)
     # port = Bluestacks.get_hyperv_port(r"C:\Program Files\BlueStacks_nxt\bluestacks.conf", "Pie64")
@@ -60,6 +63,7 @@ def init_maa():
     # 若需要获取详细执行信息，请传入 callback 参数
     # 例如 asst = Asst(callback=my_callback)
     _asst = Asst(callback=my_callback)
+    _asst.set_instance_option(InstanceOptionType.touch_type, 'maatouch')
     print(port)
     if _asst.connect('adb', f'127.0.0.1:{port}'):
         print('连接成功')
