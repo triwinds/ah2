@@ -24,7 +24,7 @@ def my_callback(msg, details, arg):
         logger.info(f'task {d.get("taskchain")} started.')
     elif m == Message.TaskChainCompleted:
         logger.info(f'task {d.get("taskchain")} finished.')
-    print(m, d)
+    # print(m, d)
     handle_maa_callback_detail(m, d)
 
 
