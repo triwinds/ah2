@@ -178,6 +178,7 @@ class StageNavigator(AddonBase):
         episode_tag_rect = (35.000*self.vh, 39.306*self.vh, 49.444*self.vh, 42.083*self.vh)
         current_episode_str = ''
         for _ in range(3):
+            self.delay(1)
             screenshot = self.screenshot()
             current_episode_tag = screenshot.crop(episode_tag_rect)
             current_episode_str = stage_ocr.do_img_ocr(current_episode_tag)
