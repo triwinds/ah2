@@ -105,7 +105,7 @@ def start_redroid():
     os.chdir('/root/redroid/')
     logger.info('starting redroid...')
     os.system('docker-compose up -d')
-    time.sleep(60000)
+    time.sleep(60)
     os.chdir(path)
 
 
