@@ -69,7 +69,7 @@ def check_emulator_is_alive():
 
 
 def check_redroid_is_alive():
-    output = subprocess.run(['docker ps -a'], capture_output=True)
+    output = subprocess.run(['docker', 'ps', '-a'], capture_output=True)
     return 'redroid' in output.stdout.decode('utf-8')
 
 
