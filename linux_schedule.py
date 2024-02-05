@@ -84,6 +84,7 @@ def do_works():
     global helper
     shutdown_maa()
     update_cache()
+    from util.msg_sender import send_by_tg_bot
     # 重启 adb server, 以免产生奇怪的 bug
     try:
         os.system('adb kill-server')
@@ -96,6 +97,7 @@ def do_works():
         clear_sanity()
         common_task.main()
         logger.info(f'finish at: {datetime.now()}')
+        send_by_tg_bot('ah2', f'task finished at: {datetime.now()}')
         time.sleep(60)
         if common_config.rouge_like:
             from Arknights.addons.common import CommonAddon

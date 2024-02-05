@@ -162,10 +162,10 @@ def get_t3_item_map_from_yituliu():
     # doc: https://github.com/Arknights-yituliu/BackEndV3/blob/main/src/main/java/com/lhs/controller/StageController.java
     # item_cn_name: item_info
     res = {}
-    resp = requests.get('https://backend.yituliu.site/stage/t3/v2')
-    data = resp.json()['data']['recommendedStageList']
+    resp = requests.get('https://ark.yituliu.cn/backend/stage/t3?expCoefficient=0.625')
+    data = resp.json()['data']
     for l1 in data:
-        for item in l1['stageResultList']:
+        for item in l1:
             tmp = res.get(item['itemName'])
             if not tmp:
                 res[item['itemName']] = item
@@ -203,8 +203,8 @@ __all__ = ['GrassAddOn']
 
 
 if __name__ == '__main__':
-    from Arknights.configure_launcher import helper
-    helper.addon(GrassAddOn).run()
-    # t3_item_map = get_t3_item_map_from_yituliu()
-    # for item_name in t3_item_map:
-    #     print(item_name, t3_item_map[item_name]['stageCode'])
+    # from Arknights.configure_launcher import helper
+    # helper.addon(GrassAddOn).run()
+    t3_item_map = get_t3_item_map_from_yituliu()
+    for item_name in t3_item_map:
+        print(item_name, t3_item_map[item_name]['stageCode'])
