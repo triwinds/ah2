@@ -48,7 +48,7 @@ class Updater:
         p.start()
         p.join()
         # MAA当前版本 self.cur_version
-        self.cur_version = q.get()
+        self.cur_version = q.get(timeout=5)
 
     @staticmethod
     def map_version_type(version):
