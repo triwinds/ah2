@@ -184,6 +184,8 @@ class OperationOnceStatemachine:
             t = time.monotonic() - smobj.operation_start
             finish_log_level = logging.INFO if int(t) % 10 == 0 else logging.DEBUG
             self.logger.log(finish_log_level, '已进行 %.1f s，判断是否结束', t)
+        if t > 1200:
+            raise RuntimeError('Combat time too long!')
 
         screenshot = self.addon.screenshot()
 
