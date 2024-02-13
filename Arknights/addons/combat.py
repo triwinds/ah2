@@ -140,14 +140,18 @@ class OperationOnceStatemachine:
 
     def on_troop(self, smobj):
         count_times = 0
+        confirm_tap_flag = False
         while True:
             self.addon.delay(TINY_WAIT, False)
             screenshot = self.addon.screenshot()
             recoresult = imgreco.before_operation.check_confirm_troop_rect(screenshot)
             if recoresult:
-                self.logger.info('确认编队')
-                break
+                confirm_tap_flag = True
+                self.logger.info(f'确认编队, count: {count_times}')
+                self.addon.tap_rect(imgreco.before_operation.get_confirm_troop_rect(self.addon.viewport))
             else:
+                if confirm_tap_flag:
+                    break
                 count_times += 1
                 if count_times <= 7:
                     self.logger.warning('等待确认编队')
@@ -155,7 +159,6 @@ class OperationOnceStatemachine:
                 else:
                     self.logger.error('{} 次检测后不再确认编队界面'.format(count_times))
                     raise StopIteration()
-        self.addon.tap_rect(imgreco.before_operation.get_confirm_troop_rect(self.addon.viewport))
         smobj.operation_start = time.monotonic()
         smobj.state = self.on_operation
 
