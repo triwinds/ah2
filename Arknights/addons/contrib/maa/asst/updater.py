@@ -42,13 +42,17 @@ class Updater:
         self.latest_version = None
         self.assets_object = None
 
-        # 使用子线程获取当前版本后关闭，避免占用dll
-        q = queues.Queue(1, ctx=multiprocessing)
-        p = Process(target=self._get_cur_version, args=(path, q,))
-        p.start()
-        p.join()
-        # MAA当前版本 self.cur_version
-        self.cur_version = q.get(timeout=5)
+        retry_count = 0
+        while retry_count < 5:
+            retry_count += 1
+            # 使用子线程获取当前版本后关闭，避免占用dll
+            q = queues.Queue(1, ctx=multiprocessing)
+            p = Process(target=self._get_cur_version, args=(path, q,))
+            p.start()
+            p.join()
+            # MAA当前版本 self.cur_version
+            self.cur_version = q.get(timeout=5)
+            break
 
     @staticmethod
     def map_version_type(version):
