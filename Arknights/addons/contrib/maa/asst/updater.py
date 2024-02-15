@@ -1,6 +1,7 @@
 import json
 import multiprocessing
 import platform
+import queue
 import re
 import os
 import tarfile
@@ -45,14 +46,17 @@ class Updater:
         retry_count = 0
         while retry_count < 5:
             retry_count += 1
-            # 使用子线程获取当前版本后关闭，避免占用dll
-            q = queues.Queue(1, ctx=multiprocessing)
-            p = Process(target=self._get_cur_version, args=(path, q,))
-            p.start()
-            p.join()
-            # MAA当前版本 self.cur_version
-            self.cur_version = q.get(timeout=5)
-            break
+            try:
+                # 使用子线程获取当前版本后关闭，避免占用dll
+                q = queues.Queue(1, ctx=multiprocessing)
+                p = Process(target=self._get_cur_version, args=(path, q,))
+                p.start()
+                p.join()
+                # MAA当前版本 self.cur_version
+                self.cur_version = q.get(timeout=5)
+                break
+            except queue.Empty:
+                print(f'version empty count: {retry_count}')
 
     @staticmethod
     def map_version_type(version):

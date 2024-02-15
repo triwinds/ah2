@@ -57,6 +57,11 @@ def old_infrast_task(helper):
                 raise e
 
 
+def do_maa_tasks(queue):
+    from maa_task import do_maa_tasks
+    do_maa_tasks(queue)
+
+
 def main():
     print('do common task.')
     helper = get_helper()
@@ -80,7 +85,12 @@ def main():
     # old_infrast_task(helper)
     from Arknights.addons.common import CommonAddon
     helper.addon(CommonAddon).back_to_main()
-    os.system('python maa_task.py')
+    from multiprocessing import Process, Queue
+    queue = Queue()
+    proc = Process(target=do_maa_tasks, args=(queue,))
+    proc.start()
+    proc.join(timeout=3600)
+    logger.info('maa tasks done, result: {}'.format(queue.get()))
 
     # if datetime.now().hour > 20 or datetime.now().hour < 4:
     #     logger.info('===收取并使用信用点')
