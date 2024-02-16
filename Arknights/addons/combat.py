@@ -337,6 +337,7 @@ class OperationOnceStatemachine:
 
 
 class CombatAddon(AddonBase):
+    loots = {}
     def on_attach(self):
         self.operation_time = []
         self.reset_refill()

@@ -90,7 +90,8 @@ def main():
     proc = Process(target=do_maa_tasks, args=(queue,))
     proc.start()
     proc.join(timeout=3600)
-    logger.info('maa tasks done, result: {}'.format(queue.get()))
+    maa_result = queue.get()
+    logger.info('maa tasks done, result: {}'.format(maa_result))
 
     # if datetime.now().hour > 20 or datetime.now().hour < 4:
     #     logger.info('===收取并使用信用点')
@@ -98,6 +99,7 @@ def main():
     #     task_cache['get_credit'] = True
 
     save_cache(task_cache)
+    return {'maa_result': maa_result}
 
 
 if __name__ == '__main__':

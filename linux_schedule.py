@@ -5,7 +5,7 @@ import os
 import time
 import traceback
 from datetime import datetime, timezone, timedelta
-
+from util.msg_sender import send_by_tg_bot
 import requests
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -80,11 +80,24 @@ def clear_sanity_by_item(only_activity=False):
         helper.addon(StageNavigator).navigate_and_combat(sanity_mode, 1000)
 
 
+def send_summary(helper, common_task_result):
+    body = f'Task finished at: {datetime.now()}\n\n'
+    body += '**Loots:**\n\n'
+    from Arknights.addons.combat import CombatAddon
+    loots = helper.addon(CombatAddon).loots
+    for loot in loots:
+        body += f'{loot}: {loots[loot]}\n\n'
+    body += '\n\n**Common tasks:**\n\n'
+    for task in common_task_result:
+        body += f'{task}: {common_task_result[task]}'
+    send_by_tg_bot('ah2', body)
+
+
 def do_works():
     global helper
     shutdown_maa()
     update_cache()
-    from util.msg_sender import send_by_tg_bot
+
     # 重启 adb server, 以免产生奇怪的 bug
     try:
         os.system('adb kill-server')
@@ -95,9 +108,9 @@ def do_works():
         update_net()
         logger.info(f'run schedule at {datetime.now()}')
         clear_sanity()
-        common_task.main()
+        common_task_result = common_task.main()
         logger.info(f'finish at: {datetime.now()}')
-        send_by_tg_bot('ah2', f'task finished at: {datetime.now()}')
+        send_summary(helper, common_task_result)
         time.sleep(60)
         if common_config.rouge_like:
             from Arknights.addons.common import CommonAddon
