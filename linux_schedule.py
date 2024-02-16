@@ -101,10 +101,13 @@ def escape_markdown(
     return re.sub(f"([{re.escape(escape_chars)}])", r"\\\1", text)
 
 
-def send_summary(helper, common_task_result):
+def send_summary(loots, stage_count, common_task_result):
     body = f'Task finished at: {escape_markdown(str(datetime.now()))}\n\n```log\n'
-    from Arknights.addons.combat import CombatAddon
-    loots = helper.addon(CombatAddon).loots
+    if stage_count:
+        body += '[Stages]\n'
+        for stage in stage_count:
+            body += f'{stage}: {stage_count[stage]}\n'
+        body += '\n'
     if loots:
         body += '[Loots]\n'
         for loot in loots:
@@ -132,9 +135,12 @@ def do_works():
         update_net()
         logger.info(f'run schedule at {datetime.now()}')
         clear_sanity()
+        from Arknights.addons.combat import CombatAddon
+        loots = helper.addon(CombatAddon).loots
+        stage_count = helper.addon(CombatAddon).stage_count
         common_task_result = common_task.main()
         logger.info(f'finish at: {datetime.now()}')
-        send_summary(helper, common_task_result)
+        send_summary(loots, stage_count, common_task_result)
         time.sleep(60)
         if common_config.rouge_like:
             from Arknights.addons.common import CommonAddon

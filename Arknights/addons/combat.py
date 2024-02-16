@@ -338,10 +338,12 @@ class OperationOnceStatemachine:
 
 class CombatAddon(AddonBase):
     loots = {}
+    stage_count = {}
     def on_attach(self):
         self.operation_time = []
         self.reset_refill()
         self.loots = {}
+        self.stage_count = {}
         self.use_penguin_report = app.config.combat.penguin_stats.enabled
         if self.use_penguin_report:
             self.penguin_reporter = penguin_stats.reporter.PenguinStatsReporter()
@@ -412,7 +414,7 @@ class CombatAddon(AddonBase):
             remain = desired_count - count
             if remain > 1:
                 self.logger.error('已忽略余下的 %d 次战斗', remain - 1)
-
+        self.stage_count[c_id] = remain
         return c_id, remain
 
     def can_perform_refill(self):
