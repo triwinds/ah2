@@ -1,3 +1,6 @@
+import re
+from typing import Optional
+
 import requests
 import json
 import logging
@@ -80,16 +83,37 @@ def clear_sanity_by_item(only_activity=False):
         helper.addon(StageNavigator).navigate_and_combat(sanity_mode, 1000)
 
 
+def escape_markdown(
+    text: str, version=1, entity_type: Optional[str] = None
+) -> str:
+    if int(version) == 1:
+        escape_chars = r"_*`["
+    elif int(version) == 2:
+        if entity_type in ["pre", "code"]:
+            escape_chars = r"\`"
+        elif entity_type in ["text_link", "custom_emoji"]:
+            escape_chars = r"\)"
+        else:
+            escape_chars = r"\_*[]()~`>#+-=|{}.!"
+    else:
+        raise ValueError("Markdown version must be either 1 or 2!")
+
+    return re.sub(f"([{re.escape(escape_chars)}])", r"\\\1", text)
+
+
 def send_summary(helper, common_task_result):
-    body = f'Task finished at: {datetime.now()}\n\n'
-    body += '**Loots:**\n\n'
+    body = f'Task finished at: {escape_markdown(str(datetime.now()))}\n\n```log\n'
     from Arknights.addons.combat import CombatAddon
     loots = helper.addon(CombatAddon).loots
-    for loot in loots:
-        body += f'{loot}: {loots[loot]}\n\n'
-    body += '\n\n**Common tasks:**\n\n'
+    if loots:
+        body += '[Loots]\n'
+        for loot in loots:
+            body += f'{loot}: {loots[loot]}\n'
+        body += '\n'
+    body += '[Common tasks]\n'
     for task in common_task_result:
-        body += f'{task}: {common_task_result[task]}'
+        body += f'{task}: {common_task_result[task]}\n'
+    body += '```'
     send_by_tg_bot('ah2', body)
 
 

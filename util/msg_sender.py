@@ -10,4 +10,6 @@ def send_by_tg_bot(title, content):
     # @shadowfox_MsgCat_bot
     result = requests.post('https://msgcat.shadowfox.workers.dev/sendMsg',
                            json={'chatId': chat_id, 'title': title, 'content': content})
+    if result.status_code != 200 or '"ok":true' not in result.text:
+        print(result.text)
     return result
