@@ -280,7 +280,7 @@ class ActivityAddOn(AddonBase):
         start_x = w - w // 3
         right_area = screen.crop((start_x, 0, w, h // 2))
         box_center, max_score = detect_box(right_area, activity_name, no_scale=True)
-        if max_score > 0.4:
+        if max_score > 0.1:
             logger.info(f"检测到 {activity_name} 活动, 可能是当前活动, 尝试打开...")
             box_center = box_center[0] + start_x, box_center[1]
             self.tap_point(box_center, self.delay_after_open_activity)
