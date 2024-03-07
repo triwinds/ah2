@@ -232,16 +232,18 @@ normal_icons = [stage_icon1, stage_icon2]
 extra_icons = [stage_icon_ex1]
 
 
-def recognize_with_ppocr(pil_screen, tags_map):
+def recognize_with_ppocr(pil_screen):
     from imgreco.common import convert_to_cv
     from imgreco.ppocr_utils import get_ppocr, calc_box_center
-    res = get_ppocr().detect_and_ocr(convert_to_cv(pil_screen), drop_score=0.7)
+    res = get_ppocr().detect_and_ocr(convert_to_cv(pil_screen), drop_score=0.3)
+    tags_map = {}
     for box in res:
         if '-' not in box.ocr_text:
             continue
         pos = calc_box_center(box.box)
         if pil_screen.size[0] * 0.1 < pos[0] < pil_screen.size[0] * 0.9:
             tags_map[box.ocr_text] = pos
+    return tags_map
 
 
 def recognize_all_screen_stage_tags(pil_screen, allow_extra_icons=False):
