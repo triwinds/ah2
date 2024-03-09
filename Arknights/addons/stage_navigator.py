@@ -244,7 +244,7 @@ class StageNavigator(AddonBase):
             if not tags_map or all(stage not in partition_map for stage in tags_map):
                 tags_map = imgreco.stage_ocr.recognize_with_ppocr(screenshot)
                 self.logger.info(f'recognize_with_ppocr: {tags_map}')
-                if not tags_map:
+                if not tags_map or all(stage not in partition_map for stage in tags_map):
                     self.logger.error('未能定位关卡地图')
                     raise RuntimeError('recognition failed')
             self.logger.debug('tags map: ' + repr(tags_map))
