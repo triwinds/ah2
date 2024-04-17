@@ -4,7 +4,10 @@ from imgreco.imgops import match_template
 from PIL import Image
 import os
 import logging
+
+from util import cvimage
 from util.richlog import get_logger
+from Arknights.configure_launcher import get_helper
 
 
 file_root = os.path.realpath(os.path.dirname(__file__)) + '/'
@@ -26,8 +29,14 @@ def start_and_login_arknights():
     time.sleep(30)
 
 
+def screenshot():
+    helper = get_helper()
+    from Arknights.addons.common import CommonAddon
+    addon = helper.addon(CommonAddon)
+    return addon.screenshot()
+
+
 def click_window_img(pil_gray_img):
-    from Arknights.configure_launcher import get_helper
     helper = get_helper()
     from Arknights.addons.common import CommonAddon
     addon = helper.addon(CommonAddon)
@@ -49,12 +58,21 @@ def retry_click_img(img, img_name):
         time.sleep(20)
         c += 1
         if c > max_retry:
+            screen = screenshot()
+            rich_logger.logimage(screen)
             rich_logger.logtext('fail img_name: ' + img_name)
-            # logger.logimage(cvimage.from_pil(window.capture_as_image()))
-            # logger.logimage(BaseAddOn().screenshot())
-            raise RuntimeError(f'Fail to click [{img_name}].')
+            import imgreco.common
+            dlgtype, ocrresult = imgreco.common.recognize_dialog(img)
+            if dlgtype is None:
+                raise RuntimeError(f'Fail to click [{img_name}].')
+            else:
+                raise RuntimeError(f'Fail to click [{img_name}], dialog ocr result: {ocrresult}.')
         else:
             logger.info(f'retry click [{img_name}]...')
+            import imgreco.common
+            dlgtype, ocrresult = imgreco.common.recognize_dialog(img)
+            if dlgtype is not None:
+                raise RuntimeError(f'Fail to click [{img_name}], dialog ocr result: {ocrresult}.')
 
 
 def start_bluestacks():
