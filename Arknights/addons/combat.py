@@ -271,7 +271,7 @@ class OperationOnceStatemachine:
                 return
             else:
                 self.logger.error('未处理的对话框：[%s] %s', dlgtype, ocrresult)
-                raise RuntimeError('unhandled dialog')
+                raise RuntimeError(f'unhandled dialog, ocrresult: {ocrresult}')
 
         self.logger.log(finish_log_level, '战斗未结束')
 
