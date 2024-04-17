@@ -71,6 +71,7 @@ class OperationOnceStatemachine:
         self.addon = addon
         self.vh, self.vw = self.addon.vh, self.addon.vw
         self.smobj = None
+        self.retry_sync = 0
 
     def prepare_operation(self):
         count_times = 0
@@ -269,6 +270,14 @@ class OperationOnceStatemachine:
                     self.logger.info('发现放弃行动提示，关闭')
                     self.addon.tap_rect(imgreco.common.get_dialog_left_button_rect(screenshot))
                 return
+            elif dlgtype == 'yesno' and '未能成功同步' in ocrresult:
+                if self.retry_sync < 10:
+                    self.logger.info('同步失败，重试')
+                    self.retry_sync += 1
+                    self.addon.tap_rect(imgreco.common.get_dialog_right_button_rect(screenshot))
+                    self.addon.delay(10)
+                    return
+                raise RuntimeError('同步失败，重试次数过多')
             else:
                 self.logger.error('未处理的对话框：[%s] %s', dlgtype, ocrresult)
                 raise RuntimeError(f'unhandled dialog, ocrresult: {ocrresult}')
