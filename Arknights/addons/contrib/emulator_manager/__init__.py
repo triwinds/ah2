@@ -4,7 +4,7 @@ from imgreco.imgops import match_template
 from PIL import Image
 import os
 import logging
-
+from Arknights.addons.common import CommonAddon
 from util import cvimage
 from util.richlog import get_logger
 from Arknights.configure_launcher import get_helper
@@ -31,14 +31,12 @@ def start_and_login_arknights():
 
 def screenshot():
     helper = get_helper()
-    from Arknights.addons.common import CommonAddon
     addon = helper.addon(CommonAddon)
     return addon.screenshot()
 
 
 def click_window_img(pil_gray_img):
     helper = get_helper()
-    from Arknights.addons.common import CommonAddon
     addon = helper.addon(CommonAddon)
     screen = addon.screenshot()
     gray_screen = screen.convert('L')
@@ -53,6 +51,7 @@ def click_window_img(pil_gray_img):
 def retry_click_img(img, img_name):
     c = 0
     max_retry = 6
+    network_retry_count = 0
     logger.info(f'try to click [{img_name}].')
     while not click_window_img(img):
         time.sleep(20)
@@ -60,13 +59,22 @@ def retry_click_img(img, img_name):
         if c > max_retry:
             screen = screenshot()
             rich_logger.logimage(screen)
-            rich_logger.logtext('fail img_name: ' + img_name)
             import imgreco.common
             dlgtype, ocrresult = imgreco.common.recognize_dialog(img)
+            rich_logger.logtext(f'fail img_name: {img_name}, dlgtype: {dlgtype}, dialog ocr result: {ocrresult}')
             if dlgtype is None:
                 raise RuntimeError(f'Fail to click [{img_name}].')
             else:
-                raise RuntimeError(f'Fail to click [{img_name}], dialog ocr result: {ocrresult}.')
+                if dlgtype == 'ok' and '获取网络配置失败' in ocrresult:
+                    network_retry_count += 1
+                    if network_retry_count < 6:
+                        helper = get_helper()
+                        addon = helper.addon(CommonAddon)
+                        addon.tap_rect(imgreco.common.get_dialog_ok_button_rect(img))
+                    else:
+                        raise RuntimeError(f'Fail to click [{img_name}], dialog ocr result: {ocrresult}.')
+                else:
+                    raise RuntimeError(f'Fail to click [{img_name}], dialog ocr result: {ocrresult}.')
         else:
             logger.info(f'retry click [{img_name}]...')
             import imgreco.common
