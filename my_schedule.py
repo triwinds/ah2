@@ -136,5 +136,7 @@ if __name__ == '__main__':
         sanity_mode = '1-7'
     elif sanity_mode == 'g':
         sanity_mode = 'grass'
+    elif sanity_mode == 'a':
+        sanity_mode = 'ap-5'
     main()
     # print(is_in_event())
