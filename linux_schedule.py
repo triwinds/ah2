@@ -26,6 +26,7 @@ from common_config import common_config
 
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None
+grab_red_ticket = False
 
 
 def download_latest_apk():
@@ -43,7 +44,6 @@ def clear_sanity():
     now = datetime.now().astimezone(tz=timezone(timedelta(hours=4)))
     wd = now.weekday()
     logger.info(f'clear_sanity, weekday: {wd}, time: {now}')
-    grab_red_ticket = False
     # items_day = {0, 2, 3, 4, 5, 6}
     # items_day = {2, 4}
     red_ticket_day = {0, 3, 5, 6}
@@ -188,6 +188,7 @@ if __name__ == '__main__':
     elif sanity_mode == 'g':
         sanity_mode = 'grass'
     elif sanity_mode == 'a':
-        sanity_mode = 'ap-5'
+        grab_red_ticket = True
+        sanity_mode = '1-7'
     main()
     # print(is_in_event())
