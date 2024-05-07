@@ -122,6 +122,7 @@ def get_all_item_details_in_screen(screen, exclude_item_ids=None, exclude_item_t
         exclude_item_types = {'ACTIVITY_ITEM'}
     imgs = get_all_item_img_in_screen(screen)
     res = []
+    item_set = set()
     for item_img in imgs:
         itemimg = Image.fromarray(item_img['item_img'], 'BGR')
         logger.logimage(itemimg)

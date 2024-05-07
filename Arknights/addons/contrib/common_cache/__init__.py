@@ -139,7 +139,17 @@ def load_inventory(helper: BaseAutomator, force_update=False, cache_key='%Y--%V'
 
 def update_inventory(helper: BaseAutomator, cache_key='%Y--%V'):
     from Arknights.addons.inventory import InventoryAddon
-    data = helper.addon(InventoryAddon).get_inventory_items(True, False)
+    retry_count = 0
+    data = None
+    while retry_count < 3:
+        retry_count += 1
+        data = helper.addon(InventoryAddon).get_inventory_items(True, False)
+        if None not in data.values():
+            break
+        helper.logger.info('Inventory data contains None data, retry...')
+    if data is None:
+        helper.logger.error('Failed to update inventory data.')
+        raise Exception('Failed to update inventory data.')
     data['cacheTime'] = datetime.now().strftime(cache_key)
     with open(inventory_cache_file, 'w') as f:
         json.dump(data, f)

@@ -17,6 +17,7 @@ class InventoryAddon(AddonBase):
         screenshot = self.screenshot()
         extra_move = randint(self.viewport[0] // 5, self.viewport[0] // 4) \
             if self.control.device_config.screenshot_method == 'aah-agent' else 0
+        item_ids = set()
         while True:
             move = -randint(self.viewport[0] // 4, self.viewport[0] // 3) - extra_move
             self.swipe_screen(move)
@@ -33,7 +34,11 @@ class InventoryAddon(AddonBase):
             else:
                 self.logger.info('screen_items_map: %s' % screen_items_map)
             last_screen_items = screen_item_ids
-            items += screen_items
+            for item in screen_items:
+                if item['quantity'] is None and item['itemId'] in item_ids:
+                    continue
+                item_ids.add(item['itemId'])
+                items.append(item)
             # break
             screenshot = self.screenshot()
         if show_item_name:
