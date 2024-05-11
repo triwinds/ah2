@@ -49,8 +49,8 @@ def clear_sanity():
     red_ticket_day = {0, 3, 5, 6}
     # Monday = 0, Sunday = 6
     if wd in red_ticket_day and grab_red_ticket:
-        clear_sanity_by_item(True)
         clear_sanity_by_red_ticket()
+        clear_sanity_by_item(True)
     elif wd == 1:
         logger.info('clear_sanity_by_jiaomie')
         if not helper.addon(AutoJiaomieAddOn).run():
