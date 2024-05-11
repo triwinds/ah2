@@ -49,6 +49,7 @@ def clear_sanity():
     red_ticket_day = {0, 3, 5, 6}
     # Monday = 0, Sunday = 6
     if wd in red_ticket_day and grab_red_ticket:
+        helper.addon(AutoChips).run()
         clear_sanity_by_red_ticket()
         clear_sanity_by_item(True)
     elif wd == 1:
