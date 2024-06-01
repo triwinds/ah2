@@ -66,7 +66,8 @@ def download_maa_cli():
 
 
 def log_maa_cli_version():
-    logger.info(f"maa-cli version: {subprocess.run([maa_path, 'version'], stdout=subprocess.PIPE).stdout.decode()}")
+    logger.info(f"maa-cli version: "
+                f"{subprocess.run([maa_path, 'version'], stdout=subprocess.PIPE).stdout.decode().strip()}")
 
 
 def close_all_processes():
@@ -78,7 +79,7 @@ atexit.register(close_all_processes)
 
 
 def run_task(task_name: str):
-    p = subprocess.Popen([maa_path, 'run', task_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen([maa_path, 'run', task_name, '-vvv'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     processes.append(p)
     sel = selectors.DefaultSelector()
     sel.register(p.stdout, selectors.EVENT_READ)
@@ -123,6 +124,8 @@ def handle_log_item(log_item: str):
     # if 'UnknownSubTaskStart' in log_item:
     #     data_json = log_item.split('UnknownSubTaskStart: ')[1]
     #     data = json.loads(data_json)
+    if log_item.endswith('Start'):
+        logger.info(log_item.split(' ] ')[1])
 
 
 def run_all_tasks():
@@ -134,5 +137,6 @@ def update_maa():
 
 
 if __name__ == '__main__':
+    logging.getLogger().addHandler(logging.StreamHandler())
     init_maa_cli()
     run_all_tasks()
