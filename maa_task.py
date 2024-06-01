@@ -1,9 +1,16 @@
 from Arknights.addons.contrib.maa import *
-from common_config import common_config
 from multiprocessing import Queue
+from sys import platform
 
 
 def do_maa_tasks(q: Queue = None):
+    if platform == 'linux':
+        maa_cli_tasks(q)
+    else:
+        maa_python_tasks(q)
+
+
+def maa_python_tasks(q: Queue = None):
     try:
         asst = init_maa()
         maa_infrast(asst)
@@ -18,6 +25,12 @@ def do_maa_tasks(q: Queue = None):
             q.put({'ok': False, 'error': str(e)})
         else:
             raise e
+
+
+def maa_cli_tasks(q: Queue = None):
+    from Arknights.addons.contrib.maa.linux_cli import run_all_tasks
+    summary = run_all_tasks()
+    q.put({'ok': True, 'summary': summary})
 
 
 if __name__ == '__main__':

@@ -1,0 +1,10 @@
+[connection]
+adb_path = "adb"
+device = "127.0.0.1:5555"
+config = "General"
+
+[instance_options]
+touch_mode = "ADB"
+deployment_with_pause = false
+adb_lite_enabled = false
+kill_adb_on_exit = false
