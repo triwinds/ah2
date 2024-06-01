@@ -28,7 +28,8 @@ def maa_python_tasks(q: Queue = None):
 
 
 def maa_cli_tasks(q: Queue = None):
-    from Arknights.addons.contrib.maa.linux_cli import run_all_tasks
+    from Arknights.addons.contrib.maa.linux_cli import init_maa_cli, run_all_tasks
+    init_maa_cli()
     summary = run_all_tasks()
     q.put({'ok': True, 'summary': summary})
 
