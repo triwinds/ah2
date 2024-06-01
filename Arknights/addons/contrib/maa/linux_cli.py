@@ -106,7 +106,7 @@ def run_task(task_name: str):
             else:
                 # print("---", line, end='')
                 if line.startswith('[20'):
-                    handle_log_item(log_item)
+                    handle_log_item(log_item.strip())
                     log_item = line
                 else:
                     log_item += line
