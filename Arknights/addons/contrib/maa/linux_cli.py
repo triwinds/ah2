@@ -87,12 +87,12 @@ def run_task(task_name: str):
     log_item = ""
     summary_flag = False
     summary = ""
-    ok = 0
-    while ok < 2:
+    ok = True
+    while ok:
         for key, mask in sel.select():
             line = key.fileobj.readline().decode()
-            if not line or line == "":
-                ok += 1
+            if key.fileobj is p.stdout and (not line or line == ""):
+                ok = False
                 break
             if key.fileobj is p.stdout:
                 # print("===", line, end='')
