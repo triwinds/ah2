@@ -115,8 +115,11 @@ def send_summary(loots, stage_count, common_task_result):
             body += f'{loot}: {loots[loot]}\n'
         body += '\n'
     body += '[Common tasks]\n'
-    for task in common_task_result:
-        body += f'{task}: {common_task_result[task]}\n'
+    for task, result in common_task_result.items():
+        if task == 'maa_result' and 'summary' in result:
+            body += f'{task}:\n {result["summary"]}\n'
+        else:
+            body += f'{task}: {result}\n'
     body += '```'
     send_by_tg_bot('ah2', body)
 
