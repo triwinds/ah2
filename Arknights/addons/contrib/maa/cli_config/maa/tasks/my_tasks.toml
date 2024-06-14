@@ -23,13 +23,14 @@ name = "Recruit"
 type = "Recruit"
 [tasks.params]
 refresh = true
-times = 4
+select = [5, 4, 1]
+confirm = [5, 4, 3, 1]
 [[tasks.variants]]
-condition = { type = "Time", start = "12:00:00", end = "16:00:00" }
-params = { select = [5, 4, 1], confirm = [5, 4, 3, 1], times = 4 }
+condition = { type = "Time", start = "16:00:00", end = "20:00:00" }
+params = { times = 2 }
 [[tasks.variants]]
-condition = { type = "Time", start = "16:00:00", end = "12:00:00" }
-params = { select = [5, 4, 1], refresh = true, times = 4 }
+condition = { type = "Time", start = "04:00:00", end = "12:00:00" }
+params = { times = 2 }
 
 [[tasks]]
 name = "Award"
