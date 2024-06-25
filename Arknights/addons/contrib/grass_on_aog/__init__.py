@@ -162,7 +162,7 @@ def get_t3_item_map_from_yituliu():
     # doc: https://github.com/Arknights-yituliu/BackEndV3/blob/main/src/main/java/com/lhs/controller/StageController.java
     # item_cn_name: item_info
     res = {}
-    resp = requests.get('https://ark.yituliu.cn/backend/stage/t3?expCoefficient=0.625')
+    resp = requests.get('https://backend.yituliu.cn/stage/t3?expCoefficient=0.625')
     data = resp.json()['data']
     for l1 in data:
         for item in l1:
