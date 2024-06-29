@@ -112,7 +112,7 @@ def run_task(task_name: str):
                     log_item += line
     if '高级资深干员' in summary:
         send_by_tg_bot('公招出 6 星了!', '公招出 6 星了!')
-    return summary
+    return summary.strip()
 
 
 def handle_log_item(log_item: str):
