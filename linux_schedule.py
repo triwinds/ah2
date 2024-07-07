@@ -117,7 +117,7 @@ def send_summary(loots, stage_count, common_task_result):
     body += '[Common tasks]\n'
     for task, result in common_task_result.items():
         if task == 'maa_result' and 'summary' in result:
-            body += f'{task}:\n {result["summary"]}\n'
+            body += f'{task}:\n{result["summary"]}\n'
         else:
             body += f'{task}: {result}\n'
     body += '```'
