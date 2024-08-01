@@ -4,7 +4,8 @@ type = "Infrast"
 [tasks.params]
 facility = ["Trade", "Reception", "Mfg", "Control", "Power", "Office", "Dorm"]
 # "_NotUse"、"Money"、"SyntheticJade"、"CombatRecord"、"PureGold"、"OriginStone"、"Chip"
-drones = "SyntheticJade"
+# 交易站 SyntheticJade
+drones = "Money"
 replenish = true
 
 
