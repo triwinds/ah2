@@ -66,8 +66,9 @@ def download_maa_cli():
 
 
 def log_maa_cli_version():
-    logger.info(f"maa-cli version: "
-                f"{subprocess.run([maa_path, 'version'], stdout=subprocess.PIPE).stdout.decode().strip()}")
+    version = subprocess.run([maa_path, 'version'], stdout=subprocess.PIPE).stdout.decode().strip()
+    version = version.replace('\n', ', ')
+    logger.info(f"maa-cli version: {version}")
 
 
 def close_all_processes():
