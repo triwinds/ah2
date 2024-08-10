@@ -37,3 +37,9 @@ params = { times = 1, select = [5, 4, 1], confirm = [5, 4, 3, 1] }
 [[tasks]]
 name = "Award"
 type = "Award"
+[tasks.params]
+award = true
+mail = true
+recruit = true
+orundum = true
+mining = true
