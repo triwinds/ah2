@@ -194,5 +194,7 @@ if __name__ == '__main__':
     elif sanity_mode == 'a':
         grab_red_ticket = True
         sanity_mode = '1-7'
+    elif sanity_mode == 'l':
+        sanity_mode = 'latest'
     main()
     # print(is_in_event())
