@@ -96,7 +96,7 @@ def run_task(task_name: str):
                 ok = False
                 break
             if key.fileobj is p.stdout:
-                # print("===", line, end='')
+                print("===", line, end='')
                 if line.startswith('[INFO]'):
                     continue
                 if line.startswith('Summary'):
@@ -105,7 +105,7 @@ def run_task(task_name: str):
                 if summary_flag and not line.startswith('-----------------'):
                     summary += line
             else:
-                # print("---", line, end='')
+                print("---", line, end='')
                 if line.startswith('[20'):
                     handle_log_item(log_item.strip())
                     log_item = line
