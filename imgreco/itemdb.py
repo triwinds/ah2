@@ -92,6 +92,8 @@ def update_net():
         resp = retry_get('https://gh.cirno.xyz/raw.githubusercontent.com/triwinds/arknights-ml/master/inventory/ark_material.onnx')
         with open(net_file, 'wb') as f:
             f.write(resp.content)
+        for file in app.extra_items_path.glob('*.png'):
+            file.unlink()
     else:
         os.utime(material_model_gen_time_file, None)
 
