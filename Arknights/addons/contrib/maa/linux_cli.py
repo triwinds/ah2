@@ -134,7 +134,14 @@ def run_all_tasks():
 
 
 def update_maa():
-    subprocess.run([maa_path, 'update'])
+    process = subprocess.Popen([maa_path, 'update'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+    out += err
+    if 'Error' in out.decode():
+        logger.error(f'update maa-cli failed: {out.decode()}')
+        logger.info('trying to reinstall maa-cli and maa...')
+        maa_path.unlink()
+        download_maa_cli()
 
 
 if __name__ == '__main__':
