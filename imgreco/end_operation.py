@@ -412,7 +412,7 @@ def recognize_ep10(im: Image.Image, learn_unrecognized_item=False):
     logger.logimage(grouping.resize((grouping.width, 16)))
 
     d = np.array(grouping, dtype=np.int16)[0]
-    points = [0, *find_jumping(d, 55)]
+    points = [0, *find_jumping(d, 40)]
     if len(points) % 2 != 0:
         raise RuntimeError('possibly incomplete item list')
     finalgroups = list(zip(*[iter(points)] * 2))  # each_slice(2)
