@@ -423,7 +423,7 @@ class CombatAddon(AddonBase):
             remain = desired_count - count
             if remain > 1:
                 self.logger.error('已忽略余下的 %d 次战斗', remain - 1)
-        self.stage_count[c_id] = count
+        self.stage_count[c_id] = self.stage_count.get(c_id, 0) + count
         return c_id, remain
 
     def can_perform_refill(self):
