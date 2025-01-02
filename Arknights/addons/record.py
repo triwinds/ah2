@@ -233,6 +233,7 @@ class RecordAddon(AddonBase):
         repeat = record.get('repeat', 1)
         raise_exception = record.get('raise_exception', True)
         threshold = record.get('threshold', 0.7)
+        mode = record.get('prefer_mode', mode)
         for _ in range(repeat):
             if mode == 'match_template':
                 screen = self.screenshot()

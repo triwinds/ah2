@@ -4,6 +4,7 @@
     "prefer_mode": "match_template",
     "records": [
         {
+            "prefer_mode": "point",
             "img": "step0.png",
             "point": [
                 931,
