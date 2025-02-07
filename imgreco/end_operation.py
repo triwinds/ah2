@@ -273,7 +273,10 @@ class EndOperationResult:
 
 def recognize(style, im, learn_unrecognized_item=False) -> EndOperationResult:
     if style in {'legacy', 'ep10', 'sof'}:
-        return recognize_ep10(im, learn_unrecognized_item)
+        try:
+            return recognize_ep10(im, learn_unrecognized_item, group_threshold=55)
+        except:
+            return recognize_ep10(im, learn_unrecognized_item, group_threshold=40)
     elif style == 'interlocking':
         return recognize_interlocking(im, learn_unrecognized_item)
     else:
@@ -361,7 +364,7 @@ def recognize_legacy(im, learn_unrecognized_item):
     return recoresult
 
 
-def recognize_ep10(im: Image.Image, learn_unrecognized_item=False):
+def recognize_ep10(im: Image.Image, learn_unrecognized_item=False, group_threshold=55):
     import time
     t0 = time.monotonic()
     vw, vh = common.get_vwvh(im.size)
@@ -412,7 +415,7 @@ def recognize_ep10(im: Image.Image, learn_unrecognized_item=False):
     logger.logimage(grouping.resize((grouping.width, 16)))
 
     d = np.array(grouping, dtype=np.int16)[0]
-    points = [0, *find_jumping(d, 40)]
+    points = [0, *find_jumping(d, group_threshold)]
     if len(points) % 2 != 0:
         raise RuntimeError('possibly incomplete item list')
     finalgroups = list(zip(*[iter(points)] * 2))  # each_slice(2)
