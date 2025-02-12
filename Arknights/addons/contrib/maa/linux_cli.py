@@ -7,6 +7,7 @@ from pathlib import Path
 from util.msg_sender import send_by_tg_bot
 import logging
 import requests
+import time
 
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,7 @@ def close_all_processes():
 atexit.register(close_all_processes)
 
 
-def run_task(task_name: str):
+def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1小时
     p = subprocess.Popen([maa_path, 'run', task_name, '-vvv'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     processes.append(p)
     sel = selectors.DefaultSelector()
@@ -89,28 +90,47 @@ def run_task(task_name: str):
     summary_flag = False
     summary = ""
     ok = True
-    while ok:
-        for key, mask in sel.select():
-            line = key.fileobj.readline().decode()
-            if key.fileobj is p.stdout and (not line or line == ""):
-                ok = False
-                break
-            if key.fileobj is p.stdout:
-                print("===", line, end='')
-                if line.startswith('[INFO]'):
-                    continue
-                if line.startswith('Summary'):
-                    summary_flag = True
-                    continue
-                if summary_flag and not line.startswith('-----------------'):
-                    summary += line
-            else:
-                print("---", line, end='')
-                if line.startswith('[20'):
-                    handle_log_item(log_item.strip())
-                    log_item = line
+    try:
+        while ok:
+            # 使用超时参数进行select
+            for key, mask in sel.select(timeout=1.0):  # 每1秒检查一次超时
+                line = key.fileobj.readline().decode()
+                if key.fileobj is p.stdout and (not line or line == ""):
+                    ok = False
+                    break
+                if key.fileobj is p.stdout:
+                    print("===", line, end='')
+                    if line.startswith('[INFO]'):
+                        continue
+                    if line.startswith('Summary'):
+                        summary_flag = True
+                        continue
+                    if summary_flag and not line.startswith('-----------------'):
+                        summary += line
                 else:
-                    log_item += line
+                    print("---", line, end='')
+                    if line.startswith('[20'):
+                        handle_log_item(log_item.strip())
+                        log_item = line
+                    else:
+                        log_item += line
+            
+            # 检查进程是否超时
+            if p.poll() is None:  # 如果进程还在运行
+                if (timeout is not None and 
+                    p._start_time and  # type: ignore
+                    (time.time() - p._start_time) > timeout):  # type: ignore
+                    p.terminate()
+                    raise subprocess.TimeoutExpired(p.args, timeout)
+    except subprocess.TimeoutExpired:
+        logger.error(f"Task {task_name} timed out after {timeout} seconds")
+        p.terminate()
+        return f"Task timed out after {timeout} seconds"
+    finally:
+        sel.close()
+        if p in processes:
+            processes.remove(p)
+
     if '高级资深干员' in summary:
         send_by_tg_bot('公招出 6 星了!', '公招出 6 星了!')
     return summary.strip()
