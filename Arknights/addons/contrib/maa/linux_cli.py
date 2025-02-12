@@ -82,6 +82,7 @@ atexit.register(close_all_processes)
 
 def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1小时
     p = subprocess.Popen([maa_path, 'run', task_name, '-vvv'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    start_time = time.time()  # Add this line to track start time
     processes.append(p)
     sel = selectors.DefaultSelector()
     sel.register(p.stdout, selectors.EVENT_READ)
@@ -117,9 +118,7 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
             
             # 检查进程是否超时
             if p.poll() is None:  # 如果进程还在运行
-                if (timeout is not None and 
-                    p._start_time and  # type: ignore
-                    (time.time() - p._start_time) > timeout):  # type: ignore
+                if timeout is not None and (time.time() - start_time) > timeout:  # Modified this line
                     p.terminate()
                     raise subprocess.TimeoutExpired(p.args, timeout)
     except subprocess.TimeoutExpired:
