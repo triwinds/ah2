@@ -130,6 +130,10 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
         if p in processes:
             processes.remove(p)
 
+    if '高级资深干员' in summary:
+        send_by_tg_bot('公招出 6 星了!', '公招出 6 星了!')
+    return summary.strip()
+
 
 def handle_log_item(log_item: str):
     if not log_item:
