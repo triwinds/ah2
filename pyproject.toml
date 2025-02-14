@@ -14,7 +14,6 @@ dependencies = [
     "pillow>=10.0.0,<11",
     "requests>=2.31.0,<3",
     "requests-cache>=1.1.0,<2",
-    "ruamel-yaml>=0.17.32,<0.18",
     "colorama>=0.4.6,<0.5",
     "textdistance>=4.5.0,<5",
     "dataclasses-json>=0.5.13,<0.6",
@@ -23,6 +22,7 @@ dependencies = [
     "apscheduler>=3.10.1,<4",
     "pywin32>=306,<307; sys_platform == 'win32'",
     "eel>=0.16.0,<0.17",
+    "ruamel-yaml>=0.18.10",
 ]
 
 [tool.hatch.build.targets.sdist]
