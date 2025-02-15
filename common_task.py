@@ -84,13 +84,29 @@ def main():
 
     # old_infrast_task(helper)
     from Arknights.addons.common import CommonAddon
+    from queue import Empty
     helper.addon(CommonAddon).back_to_main()
     from multiprocessing import Process, Queue
     queue = Queue()
     proc = Process(target=do_maa_tasks, args=(queue,))
     proc.start()
     proc.join(timeout=3600)
-    maa_result = queue.get()
+    maa_result = 'maa任务超时'
+    if proc.is_alive():
+        logger.warning('MAA任务超时，强制终止进程')
+        # 使用管道通信确认进程状态
+        proc.terminate()
+        try:
+            maa_result = queue.get(timeout=30)  # 再给30秒缓冲时间
+        except Empty:
+            logger.error('无法获取最终结果，执行强制清理')
+            proc.kill()
+        finally:
+            proc.join()
+
+    # 清理残留资源
+    if proc.exitcode is None:
+        proc.close()
     logger.info('maa tasks done, result: {}'.format(maa_result))
 
     # if datetime.now().hour > 20 or datetime.now().hour < 4:
