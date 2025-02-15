@@ -2,7 +2,7 @@
 name = "Infrast"
 type = "Infrast"
 [tasks.params]
-facility = ["Trade", "Reception", "Mfg", "Control", "Power", "Office", "Dorm"]
+facility = ["Training", "Trade", "Reception", "Mfg", "Control", "Power", "Office", "Dorm"]
 # "_NotUse"、"Money"、"SyntheticJade"、"CombatRecord"、"PureGold"、"OriginStone"、"Chip"
 # 交易站 SyntheticJade
 drones = "Money"
