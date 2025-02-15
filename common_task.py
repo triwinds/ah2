@@ -91,18 +91,22 @@ def main():
     proc = Process(target=do_maa_tasks, args=(queue,))
     proc.start()
     proc.join(timeout=3600)
-    maa_result = 'maa任务超时'
     if proc.is_alive():
         logger.warning('MAA任务超时，强制终止进程')
-        # 使用管道通信确认进程状态
-        proc.terminate()
-        try:
-            maa_result = queue.get(timeout=30)  # 再给30秒缓冲时间
-        except Empty:
-            logger.error('无法获取最终结果，执行强制清理')
-            proc.kill()
-        finally:
+        proc.terminate()  # 先尝试正常终止
+        proc.join(timeout=5)  # 等待5秒
+
+        if proc.is_alive():  # 如果仍然存活
+            proc.kill()  # 强制杀死进程
             proc.join()
+
+    # 尝试获取结果（带超时保护）
+    maa_result = None
+    try:
+        maa_result = queue.get(block=False)  # 非阻塞获取
+    except Exception as e:
+        maa_result = f'maa 获取结果失败: {str(e)}'
+        logger.warning(f'获取结果失败: {str(e)}')
 
     # 清理残留资源
     if proc.exitcode is None:
