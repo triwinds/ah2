@@ -23,7 +23,16 @@ def start_and_login_arknights():
     helper = get_helper()
     helper.control.adb.shell('am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
     time.sleep(20)
-    retry_click_img(start_img, 'start')
+    try:
+        retry_click_img(start_img, 'start')
+    except:
+        if os.name != 'nt':
+            logger.info('Can not click [start] img, trying to restart arknights')
+            helper.control.adb.shell('am force-stop com.hypergryph.arknights')
+            time.sleep(10)
+            helper.control.adb.shell('am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
+            time.sleep(20)
+            retry_click_img(start_img, 'start')
     time.sleep(5)
     retry_click_img(login_img, 'login')
     time.sleep(30)
@@ -134,7 +143,7 @@ def start_redroid():
     os.chdir('/root/redroid/')
     logger.info('starting redroid...')
     os.system('docker-compose up -d')
-    time.sleep(60)
+    time.sleep(30)
     os.chdir(path)
 
 
