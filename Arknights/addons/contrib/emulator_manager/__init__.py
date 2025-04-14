@@ -27,6 +27,8 @@ def start_and_login_arknights():
     time.sleep(5)
     retry_click_img(login_img, 'login')
     time.sleep(30)
+    if os.name != 'nt':
+        time.sleep(30)
 
 
 def screenshot():
