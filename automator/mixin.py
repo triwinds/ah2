@@ -27,11 +27,11 @@ import imgreco.resources
 
 
 class AddonMixin(imgreco.common.RoiMatchingMixin):
+    extra_delay: int = 0
     if TYPE_CHECKING:
         helper: BaseAutomator
         logger: logging.Logger
         viewport: tuple[int, int]
-        extra_delay: int = 0
     
     def _implicit_screenshot(self) -> Image:
         return self.helper.control.screenshot(False)
