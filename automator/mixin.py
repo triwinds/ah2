@@ -31,12 +31,15 @@ class AddonMixin(imgreco.common.RoiMatchingMixin):
         helper: BaseAutomator
         logger: logging.Logger
         viewport: tuple[int, int]
+        extra_delay: int = 0
     
     def _implicit_screenshot(self) -> Image:
         return self.helper.control.screenshot(False)
 
     def delay(self, n: Real=10,  # 等待时间中值
                randomize=True, allow_skip=False):  # 是否在此基础上设偏移量
+        if self.extra_delay:
+            n += self.extra_delay
         if randomize:
             m = uniform(0, 0.3)
             n = uniform(n - m * 0.5 * n, n + m * n)
