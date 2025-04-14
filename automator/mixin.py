@@ -26,8 +26,11 @@ import imgreco.imgops
 import imgreco.resources
 
 
+extra_delay: int = 0
+
+
 class AddonMixin(imgreco.common.RoiMatchingMixin):
-    extra_delay: int = 0
+
     if TYPE_CHECKING:
         helper: BaseAutomator
         logger: logging.Logger
@@ -36,10 +39,14 @@ class AddonMixin(imgreco.common.RoiMatchingMixin):
     def _implicit_screenshot(self) -> Image:
         return self.helper.control.screenshot(False)
 
+    def set_extra_delay(self, n: int):
+        global extra_delay
+        extra_delay = n
+
     def delay(self, n: Real=10,  # 等待时间中值
                randomize=True, allow_skip=False):  # 是否在此基础上设偏移量
-        if self.extra_delay:
-            n += self.extra_delay
+        if extra_delay:
+            n += extra_delay
         if randomize:
             m = uniform(0, 0.3)
             n = uniform(n - m * 0.5 * n, n + m * n)

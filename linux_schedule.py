@@ -136,7 +136,7 @@ def do_works():
             restart_all()
         reconnect_helper()
         helper = get_helper()
-        helper.extra_delay = 3
+        helper.set_extra_delay(3)
         update_net()
         logger.info(f'run schedule at {datetime.now()}')
         clear_sanity()
