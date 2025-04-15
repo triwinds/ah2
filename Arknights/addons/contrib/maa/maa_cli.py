@@ -192,6 +192,9 @@ def maa_fight(stage_code, times=None, expiring_medicine=0, timeout=3600):
     cmds.append(stage_code)
     output = execute_maa_command(cmds, timeout)
     logger.debug(f'maa fight output: {output}')
+    if times == 0:
+        # wait 1 second for slow device
+        time.sleep(1)
     return _parse_fight_log(output)
 
 
