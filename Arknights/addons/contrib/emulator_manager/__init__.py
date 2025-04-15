@@ -165,6 +165,7 @@ def restart_all():
             reconnect_helper()
             helper = get_helper()
             start_and_login_arknights(helper)
+            break
         except RuntimeError as e:
             logger.error(e)
             logger.info('Closing arknights...')
