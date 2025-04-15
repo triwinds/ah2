@@ -25,7 +25,7 @@ class root(Schema):
         class extra_enumerators:
             vbox_emulators = Field(bool, True, '尝试探测基于 VirtualBox 的模拟器（Windows）', '通过 VirtualBox COM API 探测正在运行的模拟器')
             bluestacks_hyperv = Field(bool, True, '尝试探测 Bluestacks (Hyper-V) 设备（Windows）', '通过 Host Compute System 和 Host Compute Network API 探测正在运行的 Bluestacks Hyper-V 实例')
-            append = ListField(str, ['127.0.0.1:5555', '127.0.0.1:7555'], '追加 ADB 端口', '在设备列表中追加以下 ADB TCP/IP 端口')
+            append = ListField(str, ['127.0.0.1:5555', '127.0.0.1:7555', '127.0.0.1:16384'], '追加 ADB 端口', '在设备列表中追加以下 ADB TCP/IP 端口')
         @Namespace('设备默认设置')
         class defaults(ControllerConfig):
             pass
