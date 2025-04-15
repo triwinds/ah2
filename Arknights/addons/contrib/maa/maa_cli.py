@@ -4,19 +4,24 @@ import atexit
 import os
 import shutil
 from pathlib import Path
+from typing import Dict
+
 from util.msg_sender import send_by_tg_bot
 import logging
 import requests
 import time
+import re
 
 
 logger = logging.getLogger(__name__)
-maa_path = Path('/root/redroid/maa')
+maa_path = Path(r'D:\software\maa_cli\maa.exe') if os.name == 'nt' else Path('/root/redroid/maa')
 my_config_path = Path(os.path.realpath(os.path.dirname(__file__))).joinpath('cli_config/maa')
 processes = []
+inited = False
 
 
 def init_maa_cli():
+    global inited
     if not maa_path.exists():
         download_maa_cli()
     p = subprocess.Popen([maa_path, 'dir', 'config'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -28,9 +33,12 @@ def init_maa_cli():
     shutil.copytree(my_config_path, maa_config_path, dirs_exist_ok=True)
     update_maa()
     log_maa_cli_version()
+    inited = True
 
 
 def download_maa_cli():
+    if os.name == 'nt':
+        raise Exception('Auto download maa-cli only support linux for now.')
     resp = requests.get('https://api.github.com/repos/MaaAssistantArknights/maa-cli/releases/latest')
     data = resp.json()
     logger.info(f'maa-cli latest release: {data["tag_name"]}')
@@ -115,7 +123,7 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
                         log_item = line
                     else:
                         log_item += line
-            
+
             # 检查进程是否超时
             if p.poll() is None:  # 如果进程还在运行
                 if timeout is not None and (time.time() - start_time) > timeout:  # Modified this line
@@ -150,6 +158,59 @@ def handle_log_item(log_item: str):
 
 def run_all_tasks():
     return run_task('my_tasks')
+
+
+def execute_maa_command(cmd: str|list, timeout: int = 3600):
+    if isinstance(cmd, str):
+        cmd = cmd.split(' ')
+    logger.debug(f'execute maa command: {[maa_path, *cmd]}')
+    process = subprocess.Popen([maa_path, *cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+    out += err
+    return out.decode()
+
+
+def maa_fight(stage_code, times=None, expiring_medicine=0):
+    if not inited:
+        init_maa_cli()
+    cmds = ['fight']
+    if times:
+        cmds += ['--times', str(times)]
+    if expiring_medicine:
+        cmds += ['--expiring-medicine', str(expiring_medicine)]
+    cmds.append(stage_code)
+    output = execute_maa_command(cmds)
+    logger.debug(f'maa fight output: {output}')
+    return _parse_fight_log(output)
+
+
+def _parse_fight_log(log: str) -> Dict:
+    result = {
+        "stage_code": "",
+        "times": 0,
+        "total_drops": []
+    }
+
+    # 解析关卡名称和次数
+    fight_match = re.search(r'Fight (\S+) (\d+) times', log)
+    if fight_match:
+        result["stage_code"] = fight_match.group(1)
+        result["times"] = int(fight_match.group(2))
+
+    # 解析total drops
+    drops_section = re.search(r'total drops: (.*)', log)
+    if drops_section:
+        items = drops_section.group(1).split(', ')
+        for item in items:
+            # 处理带有特殊符号的物品名称（如“勇气”胸章）
+            parts = item.split(' x ')
+            if parts:
+                result["total_drops"].append({
+                    "name": parts[0],
+                    "count": int(parts[1])
+                })
+
+    return result
 
 
 def update_maa():

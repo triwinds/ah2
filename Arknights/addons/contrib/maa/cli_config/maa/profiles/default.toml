@@ -1,6 +1,6 @@
 [connection]
 adb_path = "adb"
-device = "127.0.0.1:5555"
+#device = "127.0.0.1:5555"
 config = "General"
 
 [instance_options]
