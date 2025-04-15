@@ -22,17 +22,8 @@ def start_and_login_arknights():
     reconnect_helper()
     helper = get_helper()
     helper.control.adb.shell('am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
-    time.sleep(20)
-    try:
-        retry_click_img(start_img, 'start')
-    except:
-        if os.name != 'nt':
-            logger.info('Can not click [start] img, trying to restart arknights')
-            helper.control.adb.shell('am force-stop com.hypergryph.arknights')
-            time.sleep(10)
-            helper.control.adb.shell('am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
-            time.sleep(20)
-            retry_click_img(start_img, 'start')
+    time.sleep(35)
+    retry_click_img(start_img, 'start')
     time.sleep(5)
     retry_click_img(login_img, 'login')
     time.sleep(30)
@@ -154,7 +145,13 @@ def restart_all():
     else:
         close_redroid()
         start_redroid()
-    start_and_login_arknights()
+    retry_count = 1 if os.name == 'nt' else 5
+    while retry_count > 0:
+        try:
+            start_and_login_arknights()
+        except RuntimeError as e:
+            logger.error(e)
+            retry_count -= 1
 
 
 if __name__ == '__main__':
