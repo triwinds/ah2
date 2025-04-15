@@ -98,31 +98,13 @@ class StartSpStageAddon(AddonBase):
     @nav.navigate
     def run(self, stage_code: str, query_only=False):
         stage_code = stage_code.upper()
-        stage_code_map, zone_linear_map = get_stage_map()
+        stage_code_map, zone_linear_map = get_stage_map()  # todo may need to fix this
         if stage_code not in stage_code_map:
             if query_only:
                 return False
             raise RuntimeError(f'无效的关卡: {stage_code}')
-        self.scale = self.viewport[1] / 720
-        if self.viewport != (1280, 720):
-            self.logger.warning('It may produce some weird effects when the resolution is not 1280x720.')
-        stage = stage_code_map[stage_code]
-        activity_id = stage['zoneId'].split('_')[0]
-        activity_infos = get_activity_infos()
-        activity = activity_infos[activity_id]
-        self.logger.debug(f'stage: {stage}, activity: {activity}')
-        try:
-            self.enter_activity(activity, query_only)
-            if query_only:
-                return True
-        except Exception as e:
-            if query_only:
-                return False
-            raise
-        self.after_enter_activity(stage)
-        stage_linear = zone_linear_map[stage['zoneId']]
-        self.logger.debug(f"stage zone id: {stage['zoneId']}, stage_linear: {stage_linear}")
-        self.addon(StageNavigator).find_and_tap_stage_by_ocr(None, stage_code, stage_linear)
+        from Arknights.addons.contrib.maa.maa_cli import maa_fight
+        maa_fight(stage_code, 0)
 
     def nav_and_combat(self, target_stage_code, times=1000):
         self.run(target_stage_code)

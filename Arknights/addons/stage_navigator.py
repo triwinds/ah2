@@ -195,6 +195,7 @@ class StageNavigator(AddonBase):
         raise RuntimeError('recognition failed')
 
     def find_and_tap_episode_by_ocr(self, target):
+        # todo update for new terminal UI
         import imgreco.common
         import imgreco.map
         import imgreco.stage_ocr
@@ -316,15 +317,11 @@ class StageNavigator(AddonBase):
         self.tap_quadrilateral(imgreco.main.get_ballte_corners(self.screenshot()))
         self.delay(TINY_WAIT)
         if path[0] == 'main':
-            vw, vh = imgreco.common.get_vwvh(self.viewport)
-            self.tap_rect((16.328*vw, 90.417*vh, 20.469*vw, 95.972*vh))
-            self.find_and_tap_episode_by_ocr(int(path[1][2:]))
-            self.find_and_tap_stage_by_ocr(path[1], path[2])
+            from Arknights.addons.contrib.maa.maa_cli import maa_fight
+            maa_fight(stage, 0)
         elif path[0] == 'material' or path[0] == 'soc':
-            self.logger.info('选择类别')
-            self.tap_rect(imgreco.map.get_daily_menu_entry(self.viewport, path[0]))
-            self.find_and_tap_daily(path[0], path[1])
-            self.find_and_tap_stage_by_ocr(path[1], path[2])
+            from Arknights.addons.contrib.maa.maa_cli import maa_fight
+            maa_fight(stage, 0)
         else:
             raise NotImplementedError()
 
@@ -335,7 +332,9 @@ class StageNavigator(AddonBase):
         if c_id == 'LATEST':
             self.goto_latest_stage()
         elif self.is_stage_supported(c_id):
-            self.goto_stage(c_id)
+            # self.goto_stage(c_id)
+            from Arknights.addons.contrib.maa.maa_cli import maa_fight
+            maa_fight(c_id, 0)
         else:
             self.logger.error('不支持的关卡：%s', c_id)
             raise ValueError(c_id)

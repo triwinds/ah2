@@ -176,17 +176,21 @@ def execute_maa_command(cmd: str|list, timeout: int = 3600):
     out += err
     return out.decode()
 
+stage_code_re = re.compile(r'^[a-zA-Z0-9-]+$')
 
-def maa_fight(stage_code, times=None, expiring_medicine=0):
+
+def maa_fight(stage_code, times=None, expiring_medicine=0, timeout=3600):
     if not inited:
         init_maa_cli()
+    if not stage_code_re.match(stage_code):
+        raise ValueError('Invalid stage code')
     cmds = ['fight']
-    if times:
+    if times is not None:
         cmds += ['--times', str(times)]
     if expiring_medicine:
         cmds += ['--expiring-medicine', str(expiring_medicine)]
     cmds.append(stage_code)
-    output = execute_maa_command(cmds)
+    output = execute_maa_command(cmds, timeout)
     logger.debug(f'maa fight output: {output}')
     return _parse_fight_log(output)
 
@@ -234,4 +238,5 @@ def update_maa():
 if __name__ == '__main__':
     logging.getLogger().addHandler(logging.StreamHandler())
     init_maa_cli()
-    run_all_tasks()
+    # run_all_tasks()
+    maa_fight('1-7', 0)
