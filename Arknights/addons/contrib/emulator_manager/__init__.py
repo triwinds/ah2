@@ -13,14 +13,12 @@ from Arknights.configure_launcher import get_helper
 file_root = os.path.realpath(os.path.dirname(__file__)) + '/'
 start_img = Image.open(file_root + 'start.png').convert('L')
 login_img = Image.open(file_root + 'login.png').convert('L')
+start_stuck_img = Image.open(file_root + 'start_stuck.png').convert('L')
 rich_logger = get_logger('emulator_manager')
 logger = logging.getLogger(__name__)
 
 
-def start_and_login_arknights():
-    from Arknights.configure_launcher import reconnect_helper, get_helper
-    reconnect_helper()
-    helper = get_helper()
+def start_and_login_arknights(helper):
     helper.control.adb.shell('am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
     time.sleep(35)
     retry_click_img(start_img, 'start')
@@ -50,10 +48,19 @@ def click_window_img(pil_gray_img):
         return True
 
 
+def check_is_stuck():
+    screen = screenshot()
+    gray_screen = screen.convert('L')
+    (x, y), p = match_template(gray_screen, start_stuck_img)
+    logger.info(f'adb check_is_stuck: {(x, y), p}')
+    return p > 0.9
+
+
 def retry_click_img(img, img_name):
     c = 0
     max_retry = 6
     network_retry_count = 0
+    linux_stuck_count = 0
     logger.info(f'try to click [{img_name}].')
     while not click_window_img(img):
         time.sleep(20)
@@ -83,6 +90,13 @@ def retry_click_img(img, img_name):
             dlgtype, ocrresult = imgreco.common.recognize_dialog(img)
             if dlgtype is not None:
                 raise RuntimeError(f'Fail to click [{img_name}], dialog ocr result: {ocrresult}.')
+            if img_name == 'start' and check_is_stuck():
+                linux_stuck_count += 1
+                if linux_stuck_count < 3:
+                    logger.info('linux stuck, retry...')
+                    time.sleep(20)
+                else:
+                    raise RuntimeError(f'Stuck in [正在获取更新...] page.')
 
 
 def start_bluestacks():
@@ -146,11 +160,17 @@ def restart_all():
         close_redroid()
         start_redroid()
     retry_count = 1 if os.name == 'nt' else 5
+    from Arknights.configure_launcher import reconnect_helper, get_helper
     while retry_count > 0:
         try:
-            start_and_login_arknights()
+            reconnect_helper()
+            helper = get_helper()
+            start_and_login_arknights(helper)
         except RuntimeError as e:
             logger.error(e)
+            logger.info('Closing arknights...')
+            helper = get_helper()
+            helper.control.adb.shell('am force-stop com.hypergryph.arknights')
             retry_count -= 1
 
 
