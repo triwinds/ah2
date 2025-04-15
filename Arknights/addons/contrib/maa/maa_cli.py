@@ -165,7 +165,14 @@ def execute_maa_command(cmd: str|list, timeout: int = 3600):
         cmd = cmd.split(' ')
     logger.debug(f'execute maa command: {[maa_path, *cmd]}')
     process = subprocess.Popen([maa_path, *cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = process.communicate()
+    try:
+        out, err = process.communicate(timeout=timeout)  # 添加超时参数
+    except subprocess.TimeoutExpired:
+        logger.error('maa command execution timed out')
+        process.terminate()  # 强制终止进程
+        out, err = process.communicate()  # 获取剩余的输出
+        logger.error(f'timeout maa output: {out.decode()}, stderr: {err.decode()}')
+        raise RuntimeError('maa command execution timed out')
     out += err
     return out.decode()
 
