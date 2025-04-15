@@ -92,9 +92,8 @@ def retry_click_img(img, img_name):
                 raise RuntimeError(f'Fail to click [{img_name}], dialog ocr result: {ocrresult}.')
             if img_name == 'start' and check_is_stuck():
                 linux_stuck_count += 1
-                if linux_stuck_count < 3:
+                if linux_stuck_count < 2:
                     logger.info('linux stuck, retry...')
-                    time.sleep(20)
                 else:
                     raise RuntimeError(f'Stuck in [正在获取更新...] page.')
 
