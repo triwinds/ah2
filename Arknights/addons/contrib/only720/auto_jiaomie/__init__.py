@@ -115,7 +115,7 @@ class AutoJiaomieAddOn(OldMixin):
         else:
             if os.name != 'nt':
                 from util.adb_utils import check_game_is_in_front
-                if not check_game_is_in_front(helper):
+                if not check_game_is_in_front(self.helper):
                     logging.info('Game is not in front, skip.')
                     return False
             logging.info('No jiaomie item on todo list, skip.')
