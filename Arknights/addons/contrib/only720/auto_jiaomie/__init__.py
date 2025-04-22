@@ -113,6 +113,11 @@ class AutoJiaomieAddOn(OldMixin):
         if self.addon(RecordAddon).try_replay_record('goto_jiaomie'):
             remain = self.start_jiaomie(remain)
         else:
+            if os.name != 'nt':
+                from util.adb_utils import check_game_is_in_front
+                if not check_game_is_in_front(helper):
+                    logging.info('Game is not in front, skip.')
+                    return False
             logging.info('No jiaomie item on todo list, skip.')
             remain = 0
         task_cache['remain'] = remain
