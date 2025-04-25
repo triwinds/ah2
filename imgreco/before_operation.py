@@ -33,7 +33,7 @@ def ocr_stage_id(img):
     if not chars or len(chars) < 3:
         return ''
     min_size = min([s.size for s in chars[:-1]])
-    if min_size > chars[-1].size:
+    if min_size > chars[-1].size or chars[-1].shape == (3,3):
         chars = chars[:-1]
     else:
         y = int(chars[-1].shape[0]/4)
@@ -62,7 +62,7 @@ def recognize(img):
     check_consume_ap = False
     if style == 'legacy':
         # old layout
-        opidrect = (100 * vw - 55.694 * vh, 11.667 * vh, 100 * vw - 44.028 * vh, 15.139 * vh)
+        opidrect = (100 * vw - 49.444 * vh, 10.972 * vh, 100 * vw - 36.667 * vh, 15.556 * vh)
         consumerect = (100 * vw - 12.870 * vh, 94.028 * vh, 100 * vw - 7.222 * vh, 97.361 * vh)
         start_button = (100 * vw - 30.972 * vh, 88.241 * vh, 100 * vw - 3.611 * vh, 95.556 * vh)
         ap_rect = (100 * vw - 21.019 * vh, 2.917 * vh, 100 * vw, 8.194 * vh)
