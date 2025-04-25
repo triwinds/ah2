@@ -103,10 +103,17 @@ def start_bluestacks():
     time.sleep(60)
 
 
+def check_port_in_use(port):
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('localhost', 5555)) == 0
+
+
 def check_emulator_is_alive():
     if os.name == 'nt':
         return check_bluestacks_is_alive()
-    return check_redroid_is_alive()
+    # return check_redroid_is_alive()
+    return check_port_in_use(5555)
 
 
 def check_redroid_is_alive():
@@ -151,13 +158,40 @@ def start_redroid():
     os.chdir(path)
 
 
+def unlock_phone():
+    logger.info('unlocking phone...')
+    helper = get_helper()
+    helper.control.adb.shell('input keyevent 26')
+    time.sleep(1)
+    helper.control.adb.shell('input touchscreen swipe 930 880 930 280')
+
+
+def close_arknights_and_lock_phone():
+    logger.info('locking phone...')
+    helper = get_helper()
+    helper.control.adb.shell('am force-stop com.hypergryph.arknights')
+    helper.control.adb.shell('input keyevent 26')
+    time.sleep(1)
+
+
+def close_emulator():
+    if os.name == 'nt':
+        close_bluestacks()
+    else:
+        # close_redroid()
+        close_arknights_and_lock_phone()
+
+
 def restart_all():
     if os.name == 'nt':
         close_bluestacks()
         start_bluestacks()
     else:
-        close_redroid()
-        start_redroid()
+        # close_redroid()
+        # start_redroid()
+        if not check_port_in_use(5555):
+            raise RuntimeError('phone adb is not connected.')
+        unlock_phone()
     retry_count = 1 if os.name == 'nt' else 5
     from Arknights.configure_launcher import reconnect_helper, get_helper
     while retry_count > 0:

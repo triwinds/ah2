@@ -21,7 +21,7 @@ from Arknights.configure_launcher import reconnect_helper, get_helper
 from automator import BaseAutomator
 from imgreco.itemdb import update_net
 from Arknights.addons.contrib.maa import maa_rouge_like, shutdown_maa
-from Arknights.addons.contrib.emulator_manager import restart_all, check_emulator_is_alive, close_redroid
+from Arknights.addons.contrib.emulator_manager import restart_all, check_emulator_is_alive, close_emulator
 from common_config import common_config
 
 logger = logging.getLogger(__file__)
@@ -152,12 +152,12 @@ def do_works():
             helper.addon(CommonAddon).back_to_main()
             maa_rouge_like('Sami')
         else:
-            close_redroid()
+            close_emulator()
     except Exception as e:
         from util.msg_sender import send_by_tg_bot
         send_by_tg_bot('arh-fail', traceback.format_exc())
         print(traceback.format_exc())
-        close_redroid()
+        close_emulator()
 
 
 def recruit():
@@ -179,7 +179,7 @@ def main():
     do_works()
     scheduler = BlockingScheduler(timezone='Asia/Shanghai')
     # scheduler.add_job(recruit, 'cron', day_of_week='0,1,2', hour='19', minute=0)
-    scheduler.add_job(close_redroid, 'cron', day='*', hour=4, minute=5)
+    # scheduler.add_job(close_emulator, 'cron', day='*', hour=4, minute=5)
     scheduler.add_job(do_works, 'cron', hour='*/4', minute=15)
     scheduler.start()
 
