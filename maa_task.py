@@ -35,6 +35,13 @@ def maa_cli_tasks(q: Queue = None):
         summary = run_all_tasks()
         if 'Error' in summary:
             retry_count -= 1
+            from util.adb_utils import check_game_is_in_front
+            from Arknights.configure_launcher import get_helper
+            helper = get_helper()
+            if not check_game_is_in_front(get_helper()):
+                logger.info('Game is not in front, restart game...')
+                from Arknights.addons.contrib.emulator_manager import start_and_login_arknights
+                start_and_login_arknights(helper)
             continue
         if retry_count != 3:
             summary += f'\nretry times:{3-retry_count}'
