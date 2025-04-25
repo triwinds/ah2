@@ -13,6 +13,7 @@ from Arknights.addons.contrib.common_cache import check_game_data_version
 from Arknights.addons.quest import QuestAddon
 from Arknights.addons.record import RecordAddon
 from Arknights.configure_launcher import get_helper
+from automator import BaseAutomator
 from imgreco.itemdb import update_net
 
 logger = logging.getLogger(__file__)
@@ -62,6 +63,46 @@ def do_maa_tasks(queue, helper):
     do_maa_tasks(queue, helper)
 
 
+def start_maa_process(helper: BaseAutomator):
+    from multiprocessing import Process, Queue
+    retry_count = 0
+    while retry_count < 3:
+        queue = Queue()
+        proc = Process(target=do_maa_tasks, args=(queue,))
+        proc.start()
+        proc.join(timeout=3600)
+        if proc.is_alive():
+            logger.warning('MAA任务超时，强制终止进程')
+            proc.terminate()  # 先尝试正常终止
+            proc.join(timeout=5)  # 等待5秒
+
+            if proc.is_alive():  # 如果仍然存活
+                proc.kill()  # 强制杀死进程
+                proc.join()
+
+        # 尝试获取结果（带超时保护）
+        maa_result = None
+        try:
+            maa_result = queue.get(block=False)  # 非阻塞获取
+        except Exception as e:
+            retry_count += 1
+            maa_result = f'maa 获取结果失败: {str(e)}'
+            logger.warning(f'获取结果失败: {str(e)}')
+        if 'Error' in maa_result:
+            retry_count += 1
+            from util.adb_utils import check_game_is_in_front
+            if not check_game_is_in_front(helper):
+                logger.info('Game is not in front, restart game...')
+                from Arknights.addons.contrib.emulator_manager import start_and_login_arknights
+                start_and_login_arknights(helper)
+            continue
+
+        # 清理残留资源
+        if proc.exitcode is None:
+            proc.close()
+        return maa_result
+
+
 def main():
     print('do common task.')
     helper = get_helper()
@@ -84,33 +125,8 @@ def main():
 
     # old_infrast_task(helper)
     from Arknights.addons.common import CommonAddon
-    from queue import Empty
     helper.addon(CommonAddon).back_to_main()
-    from multiprocessing import Process, Queue
-    queue = Queue()
-    proc = Process(target=do_maa_tasks, args=(queue, helper,))
-    proc.start()
-    proc.join(timeout=3600)
-    if proc.is_alive():
-        logger.warning('MAA任务超时，强制终止进程')
-        proc.terminate()  # 先尝试正常终止
-        proc.join(timeout=5)  # 等待5秒
-
-        if proc.is_alive():  # 如果仍然存活
-            proc.kill()  # 强制杀死进程
-            proc.join()
-
-    # 尝试获取结果（带超时保护）
-    maa_result = None
-    try:
-        maa_result = queue.get(block=False)  # 非阻塞获取
-    except Exception as e:
-        maa_result = f'maa 获取结果失败: {str(e)}'
-        logger.warning(f'获取结果失败: {str(e)}')
-
-    # 清理残留资源
-    if proc.exitcode is None:
-        proc.close()
+    maa_result = start_maa_process(helper)
     logger.info('maa tasks done, result: {}'.format(maa_result))
 
     # if datetime.now().hour > 20 or datetime.now().hour < 4:
