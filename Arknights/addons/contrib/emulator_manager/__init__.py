@@ -168,7 +168,7 @@ def start_redroid():
 
     helper = get_helper()
     helper.control.adb.shell('setprop persist.logd.enable')
-    helper.control.adb.shell('su && stop logd')
+    helper.control.adb.shell('su && stop logd && echo 1')
 
 
 def unlock_phone():
