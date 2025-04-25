@@ -33,6 +33,7 @@ def maa_cli_tasks(q: Queue = None, helper: BaseAutomator = None):
     from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, run_all_tasks
     init_maa_cli()
     retry_count = 3
+    summary = None
     while retry_count > 0:
         summary = run_all_tasks()
         if 'Error' in summary:
@@ -47,6 +48,8 @@ def maa_cli_tasks(q: Queue = None, helper: BaseAutomator = None):
             summary += f'\nretry times:{3-retry_count}'
         q.put({'ok': True, 'summary': summary})
         break
+    if q.empty():
+        q.put({'ok': False, 'summary': summary})
 
 
 if __name__ == '__main__':
