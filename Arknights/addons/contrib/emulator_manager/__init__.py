@@ -22,7 +22,7 @@ def start_and_login_arknights(helper):
     helper.control.adb.shell('am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
     time.sleep(35)
     retry_click_img(start_img, 'start')
-    time.sleep(5)
+    time.sleep(10)
     retry_click_img(login_img, 'login')
     time.sleep(30)
     if os.name != 'nt':
