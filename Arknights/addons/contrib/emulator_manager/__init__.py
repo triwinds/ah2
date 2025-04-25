@@ -168,12 +168,16 @@ def start_redroid():
 
 
 def unlock_phone():
+    if not check_port_in_use(5555):
+        raise RuntimeError('phone\'s adb is not connected.')
     os.system('adb kill-server')
     logger.info('unlocking phone...')
     helper = get_helper()
     helper.control.adb.shell('input keyevent 26')
     time.sleep(1)
     helper.control.adb.shell('input touchscreen swipe 930 880 930 280')
+    helper = get_helper()
+    helper.control.adb.shell('am force-stop com.hypergryph.arknights')
 
 
 def close_arknights_and_lock_phone():
@@ -188,8 +192,8 @@ def close_emulator():
     if os.name == 'nt':
         close_bluestacks()
     else:
-        # close_redroid()
-        close_arknights_and_lock_phone()
+        close_redroid()
+        # close_arknights_and_lock_phone()
 
 
 def restart_all():
@@ -198,13 +202,9 @@ def restart_all():
         close_bluestacks()
         start_bluestacks()
     else:
-        # close_redroid()
-        # start_redroid()
-        if not check_port_in_use(5555):
-            raise RuntimeError('phone\'s adb is not connected.')
-        unlock_phone()
-        helper = get_helper()
-        helper.control.adb.shell('am force-stop com.hypergryph.arknights')
+        close_redroid()
+        start_redroid()
+        # unlock_phone()
     retry_count = 1 if os.name == 'nt' else 5
     while retry_count > 0:
         try:
