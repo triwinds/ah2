@@ -58,9 +58,9 @@ def old_infrast_task(helper):
                 raise e
 
 
-def do_maa_tasks(queue, helper):
+def do_maa_tasks(queue):
     from maa_task import do_maa_tasks
-    do_maa_tasks(queue, helper)
+    do_maa_tasks(queue)
 
 
 def start_maa_process(helper: BaseAutomator):
