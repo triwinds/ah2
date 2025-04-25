@@ -2,8 +2,10 @@ from Arknights.addons.contrib.maa import *
 from multiprocessing import Queue
 from sys import platform
 
+from automator import BaseAutomator
 
-def do_maa_tasks(q: Queue = None):
+
+def do_maa_tasks(q: Queue = None, helper: BaseAutomator = None):
     if platform == 'linux':
         maa_cli_tasks(q)
     else:
@@ -27,7 +29,7 @@ def maa_python_tasks(q: Queue = None):
             raise e
 
 
-def maa_cli_tasks(q: Queue = None):
+def maa_cli_tasks(q: Queue = None, helper: BaseAutomator = None):
     from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, run_all_tasks
     init_maa_cli()
     retry_count = 3
@@ -36,9 +38,7 @@ def maa_cli_tasks(q: Queue = None):
         if 'Error' in summary:
             retry_count -= 1
             from util.adb_utils import check_game_is_in_front
-            from Arknights.configure_launcher import get_helper
-            helper = get_helper()
-            if not check_game_is_in_front(get_helper()):
+            if not check_game_is_in_front(helper):
                 logger.info('Game is not in front, restart game...')
                 from Arknights.addons.contrib.emulator_manager import start_and_login_arknights
                 start_and_login_arknights(helper)

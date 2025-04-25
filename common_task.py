@@ -57,9 +57,9 @@ def old_infrast_task(helper):
                 raise e
 
 
-def do_maa_tasks(queue):
+def do_maa_tasks(queue, helper):
     from maa_task import do_maa_tasks
-    do_maa_tasks(queue)
+    do_maa_tasks(queue, helper)
 
 
 def main():
@@ -88,7 +88,7 @@ def main():
     helper.addon(CommonAddon).back_to_main()
     from multiprocessing import Process, Queue
     queue = Queue()
-    proc = Process(target=do_maa_tasks, args=(queue,))
+    proc = Process(target=do_maa_tasks, args=(queue, helper,))
     proc.start()
     proc.join(timeout=3600)
     if proc.is_alive():
