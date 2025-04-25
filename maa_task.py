@@ -7,7 +7,8 @@ from automator import BaseAutomator
 
 def do_maa_tasks(q: Queue = None, helper: BaseAutomator = None):
     if platform == 'linux':
-        maa_cli_tasks(q)
+        print(helper)
+        maa_cli_tasks(q, helper)
     else:
         maa_python_tasks(q)
 
