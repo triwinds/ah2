@@ -165,6 +165,9 @@ class AddonMixin(imgreco.common.RoiMatchingMixin):
         raw_screen = self.helper.control.screenshot(cached=cached).convert(mode)
         if not app.config.device.wait_for_slow_network:
             return raw_screen
+        if self.helper.vw < self.helper.vh:
+            self.logger.info('update viewport')
+            self.helper.update_viewport(raw_screen)
         vw, vh = self.helper.vw, self.helper.vh
         roi_rect = (58.984*vw, 89.167*vh, 68.281*vw, 95.556*vh)
         roi = raw_screen.crop(roi_rect)

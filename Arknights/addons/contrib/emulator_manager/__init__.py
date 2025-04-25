@@ -38,9 +38,17 @@ def screenshot():
 def click_window_img(pil_gray_img):
     helper = get_helper()
     addon = helper.addon(CommonAddon)
+    st = time.time()
     screen = addon.screenshot()
+    logger.info(f'screenshot time: {time.time() - st:.2f}s')
+    factor = 720 / screen.size[1]
+    if factor != 1:
+        screen = screen.resize((int(factor * screen.width), int(factor * screen.height)))
     gray_screen = screen.convert('L')
     (x, y), p = match_template(gray_screen, pil_gray_img)
+    if factor != 1:
+        x = int(x / factor)
+        y = int(y / factor)
     logger.info(f'adb click_window_img: {(x, y), p}')
     if p > 0.9:
         # click_window_pos(bluestacks_window, (x, y))
@@ -160,6 +168,7 @@ def start_redroid():
 
 
 def unlock_phone():
+    os.system('adb kill-server')
     logger.info('unlocking phone...')
     helper = get_helper()
     helper.control.adb.shell('input keyevent 26')
@@ -184,6 +193,7 @@ def close_emulator():
 
 
 def restart_all():
+    from Arknights.configure_launcher import reconnect_helper, get_helper
     if os.name == 'nt':
         close_bluestacks()
         start_bluestacks()
@@ -191,10 +201,11 @@ def restart_all():
         # close_redroid()
         # start_redroid()
         if not check_port_in_use(5555):
-            raise RuntimeError('phone adb is not connected.')
+            raise RuntimeError('phone\'s adb is not connected.')
         unlock_phone()
+        helper = get_helper()
+        helper.control.adb.shell('am force-stop com.hypergryph.arknights')
     retry_count = 1 if os.name == 'nt' else 5
-    from Arknights.configure_launcher import reconnect_helper, get_helper
     while retry_count > 0:
         try:
             reconnect_helper()

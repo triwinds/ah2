@@ -424,6 +424,7 @@ class ADBController(Controller):
         if not cached or self._last_screenshot is None or t0 > self._last_screenshot_expire:
             self._last_screenshot = self._screenshot_adapter.screenshot().convert('BGR')
             t1 = time.perf_counter()
+            # print('screenshot took', t1 - t0)
             if rate_limit == -1:
                 self._last_screenshot_expire = t1 + (t1 - t0)
             else:

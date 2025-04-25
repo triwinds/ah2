@@ -88,6 +88,13 @@ class BaseAutomator(AddonMixin):
         self.on_device_connected()
         self.frontend.notify('current-device', str(self._controller))
         return old_controller
+
+    def update_viewport(self, screenshot=None):
+        if screenshot is None:
+            screenshot = self._controller.screenshot()
+        self._viewport: tuple[int, int] = screenshot.size
+        self.vw = self._viewport[0] / 100
+        self.vh = self._viewport[1] / 100
     
     def on_device_connected(self):
         pass
