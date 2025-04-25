@@ -166,8 +166,9 @@ def start_redroid():
     time.sleep(30)
     os.chdir(path)
 
+    logger.info('stopping logd...')
     helper = get_helper()
-    helper.control.adb.shell('setprop persist.logd.enable')
+    helper.control.adb.shell('setprop persist.logd.enable 0')
     helper.control.adb.shell('su && stop logd && echo 1')
 
 
