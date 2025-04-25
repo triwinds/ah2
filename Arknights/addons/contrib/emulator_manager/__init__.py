@@ -166,6 +166,10 @@ def start_redroid():
     time.sleep(30)
     os.chdir(path)
 
+    helper = get_helper()
+    helper.control.adb.shell('setprop persist.logd.enable')
+    helper.control.adb.shell('su && stop logd')
+
 
 def unlock_phone():
     if not check_port_in_use(5555):
