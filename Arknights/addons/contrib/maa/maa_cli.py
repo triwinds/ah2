@@ -198,6 +198,12 @@ def maa_fight(stage_code, times=None, expiring_medicine=0, timeout=3600):
     return _parse_fight_log(output)
 
 
+def maa_startup(timeout=120):
+    if not inited:
+        init_maa_cli()
+    execute_maa_command('startup Official', timeout=timeout)
+
+
 def _parse_fight_log(log: str) -> Dict:
     result = {
         "stage_code": "",

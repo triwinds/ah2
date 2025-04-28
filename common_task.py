@@ -95,6 +95,10 @@ def start_maa_process(helper: BaseAutomator):
                 logger.info('Game is not in front, restart game...')
                 from Arknights.addons.contrib.emulator_manager import start_and_login_arknights
                 start_and_login_arknights(helper)
+            else:
+                logger.info('Game is in front, run maa startup...')
+                from Arknights.addons.contrib.maa.maa_cli import maa_startup
+                maa_startup()
             continue
 
         # 清理残留资源
