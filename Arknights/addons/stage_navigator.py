@@ -332,9 +332,7 @@ class StageNavigator(AddonBase):
         if c_id == 'LATEST':
             self.goto_latest_stage()
         elif self.is_stage_supported(c_id):
-            # self.goto_stage(c_id)
-            from Arknights.addons.contrib.maa.maa_cli import maa_fight
-            maa_fight(c_id, 0)
+            self.goto_stage(c_id)
         else:
             self.logger.error('不支持的关卡：%s', c_id)
             raise ValueError(c_id)
