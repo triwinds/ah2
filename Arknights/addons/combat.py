@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -386,6 +387,16 @@ class CombatAddon(AddonBase):
     def create_operation_once_statemachine(self, c_id) -> OperationOnceStatemachine:
         return OperationOnceStatemachine(c_id, self)
 
+    def maa_combat_on_current_stage(self, desired_count=1000,  # 战斗次数
+                           c_id=None,  # 待战斗的关卡编号
+                           **kwargs):
+        from Arknights.addons.contrib.maa.maa_cli import maa_fight
+        res = maa_fight(c_id, 0)
+        self.stage_count[res['stage_code']] = res['times']
+        for drops in res['total_drops']:
+            self.loots[drops['name']] = self.loots.get(drops['name'], 0) + drops['count']
+        return res['stage_code'], desired_count - res['times']
+
     def combat_on_current_stage(self,
                            desired_count=1000,  # 战斗次数
                            c_id=None,  # 待战斗的关卡编号
@@ -399,6 +410,10 @@ class CombatAddon(AddonBase):
             True 完成指定次数的作战
             False 理智不足, 退出作战
         '''
+        if os.name != 'nt':
+            # linux 环境下使用 maa 战斗
+            return self.maa_combat_on_current_stage(desired_count, c_id, **kwargs)
+
         if desired_count == 0:
             return c_id, 0
         self.operation_time = []
