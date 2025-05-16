@@ -390,11 +390,13 @@ class CombatAddon(AddonBase):
     def maa_combat_on_current_stage(self, desired_count=1000,  # 战斗次数
                            c_id=None,  # 待战斗的关卡编号
                            **kwargs):
+        self.logger.info('maa 开始战斗')
         from Arknights.addons.contrib.maa.maa_cli import maa_fight
         res = maa_fight(None, desired_count)
         self.stage_count[res['stage_code']] = res['times']
         for drops in res['total_drops']:
             self.loots[drops['name']] = self.loots.get(drops['name'], 0) + drops['count']
+        self.logger.info(f"maa 战斗结束, stage_code: {res['stage_code']}, total_drops: {res['total_drops']}")
         return res['stage_code'], desired_count - res['times']
 
     def combat_on_current_stage(self,
