@@ -228,7 +228,7 @@ def _parse_fight_log(log: str) -> Dict:
         items = drops_section.group(1).split(', ')
         for item in items:
             # 处理带有特殊符号的物品名称（如“勇气”胸章）
-            parts = item.split(' x ')
+            parts = item.split(' × ')
             if parts:
                 result["total_drops"].append({
                     "name": parts[0],
@@ -250,7 +250,17 @@ def update_maa():
 
 
 if __name__ == '__main__':
-    logging.getLogger().addHandler(logging.StreamHandler())
-    init_maa_cli()
-    # run_all_tasks()
-    maa_fight('1-7', 0)
+    # logging.getLogger().addHandler(logging.StreamHandler())
+    # init_maa_cli()
+    # # run_all_tasks()
+    # maa_fight('1-7', 0)
+
+    text = '''
+    Summary
+----------------------------------------
+[Fight] 22:45:43 - 22:48:32 (2m 49s) Completed
+Fight PR-B-2 4 times, drops:
+1. 术师芯片组 × 1, 狙击芯片组 × 3, 龙门币 × 1728
+total drops: 术师芯片组 × 1, 狙击芯片组 × 3, 龙门币 × 1728
+    '''
+    print(_parse_fight_log(text))
