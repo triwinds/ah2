@@ -391,7 +391,7 @@ class CombatAddon(AddonBase):
                            c_id=None,  # 待战斗的关卡编号
                            **kwargs):
         from Arknights.addons.contrib.maa.maa_cli import maa_fight
-        res = maa_fight(c_id, 0)
+        res = maa_fight(None, desired_count)
         self.stage_count[res['stage_code']] = res['times']
         for drops in res['total_drops']:
             self.loots[drops['name']] = self.loots.get(drops['name'], 0) + drops['count']
