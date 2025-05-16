@@ -187,6 +187,10 @@ def maa_fight(stage_code, times=None, expiring_medicine=0, timeout=3600):
     cmds = ['fight']
     if times is not None:
         cmds += ['--times', str(times)]
+        if times >= 1:
+            cmds += ['--series', '0']
+    else:
+        cmds += ['--series', '0']
     if expiring_medicine:
         cmds += ['--expiring-medicine', str(expiring_medicine)]
     if stage_code:
