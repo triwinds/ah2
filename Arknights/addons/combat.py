@@ -393,9 +393,10 @@ class CombatAddon(AddonBase):
         self.logger.info('maa 开始战斗')
         from Arknights.addons.contrib.maa.maa_cli import maa_fight
         res = maa_fight(None, desired_count)
-        self.stage_count[res['stage_code']] = res['times']
-        for drops in res['total_drops']:
-            self.loots[drops['name']] = self.loots.get(drops['name'], 0) + drops['count']
+        if res['stage_code']:
+            self.stage_count[res['stage_code']] = res['times']
+            for drops in res['total_drops']:
+                self.loots[drops['name']] = self.loots.get(drops['name'], 0) + drops['count']
         self.logger.info(f"maa 战斗结束, stage_code: {res['stage_code']}, total_drops: {res['total_drops']}")
         return res['stage_code'], desired_count - res['times']
 
