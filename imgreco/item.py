@@ -132,14 +132,18 @@ def crop_blackedge(numimg: Image, threshold=None):
     if np.max(x_max[i-gap:i]) > threshold:
         right = i - np.argmax(x_max[0:i][::-1] > threshold) + int(gap/2)
         i = i - gap
+    tmp_sum = np.sum(x_max[i-gap:i])
     while i > gap:
-        if np.max(x_max[i-gap:i]) < threshold:
+        # 从右往左找长度为 gap 的连续黑色像素
+        tmp_sum += x_max[i-gap]
+        if tmp_sum < threshold * gap:
             if right is None:
                 right = i - np.argmax(x_max[0:i][::-1] > threshold) + int(gap/2)
                 i = right - gap
             else:
                 left = i - int(gap/2)
                 break
+        tmp_sum -= x_max[i]
         i -= 1
     if right is None:
         return imgops.crop_blackedge2(thr_img, 120)
@@ -237,6 +241,8 @@ def do_num_ocr(numimg: Image):
         result = ocr_engine(numimg.array, use_det=False, use_cls=False, use_rec=True)
         if len(result.txts) > 1:
             richlogger.logtext(f'{result=}')
+    if not result.txts:
+        return None
 
     text = result.txts[0]
     final_txt = ''
@@ -244,7 +250,8 @@ def do_num_ocr(numimg: Image):
         if c in '0123456789.万':
             final_txt += c
     richlogger.logtext(f"OCR: text: '{result.txts[0]}', final text: '{final_txt}', score: {result.scores[0]}")
-    return _parse_qty_text(final_txt), result.scores[0]
+    if result.scores[0] > 0.5:
+        return _parse_qty_text(final_txt)
 
 
 def get_quantity(itemimg, item_id=None):
