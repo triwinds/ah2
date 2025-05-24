@@ -18,9 +18,11 @@ from . import imgops
 from . import minireco
 from . import resources
 from . import common
+from rapidocr import RapidOCR
 
 
-
+ocr_engine = RapidOCR()
+richlogger = get_logger(__name__)
 logger = logging.getLogger(__name__)
 
 
@@ -87,7 +89,6 @@ def all_known_items():
 
 
 def get_quantity_old(itemimg):
-    richlogger = get_logger(__name__)
     numimg = imgops.scalecrop(itemimg, 0.39, 0.71, 0.82, 0.855).convert('L')
     numimg = imgops.crop_blackedge2(numimg, 120)
     if numimg is not None:
@@ -122,12 +123,15 @@ def get_quantity_old(itemimg):
 def crop_blackedge(numimg: Image, threshold=None):
     if threshold is None:
         threshold = 110
-    gap = int(numimg.height * 0.25)
+    gap = int(numimg.height * 0.2)
     # thr_img = cvimage.fromarray(cv2.threshold(numimg.array, threshold, 255, cv2.THRESH_BINARY)[1], 'L')
     thr_img = numimg
     x_max = thr_img.array[2:-1, :].max(axis=0)
     left, right = 0, None
     i = thr_img.width
+    if np.max(x_max[i-gap:i]) > threshold:
+        right = i - np.argmax(x_max[0:i][::-1] > threshold) + int(gap/2)
+        i = i - gap
     while i > gap:
         if np.max(x_max[i-gap:i]) < threshold:
             if right is None:
@@ -145,41 +149,142 @@ def crop_blackedge(numimg: Image, threshold=None):
     return numimg.crop((left, top, right, bottom))
 
 
-def get_quantity(itemimg, item_id):
+
+
+def add_black_border(img: cv2.typing.MatLike, border_size=3):
+    return cv2.copyMakeBorder(
+        img,
+        top=border_size,
+        bottom=border_size,
+        left=border_size,
+        right=border_size,
+        borderType=cv2.BORDER_CONSTANT,
+        value=[0, 0, 0],  # BGR格式的黑色
+    )
+
+
+def crop_to_min_bounding_rect(image: cv2.typing.MatLike):
+    """裁剪图像到包含所有轮廓的最小外接矩形"""
+    # 转为灰度图（如果传入的是二值图，这个操作不会有问题）
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+    # 寻找轮廓
+    contours, _ = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # 如果没有找到轮廓就直接返回原图
+    if not contours:
+        return image
+    # 合并所有轮廓点并获取外接矩形
+    all_contours = np.vstack(contours)
+    x, y, w, h = cv2.boundingRect(all_contours)
+    # 裁剪图片并返回
+    return image[y : y + h, x : x + w]
+
+
+def preprocess(img: cv2.typing.MatLike):
+    """彩色图像二值化处理，增强数字可见性"""
+    # 检查图像是否为彩色
+    if len(img.shape) == 2:
+        # 如果是灰度图像，转换为三通道
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    # 创建较宽松的亮色阈值范围（包括浅灰、白色等亮色）
+    # BGR格式
+    lower_bright = np.array([180, 180, 180])
+    upper_bright = np.array([255, 255, 255])
+
+    # 基于颜色范围创建掩码
+    bright_mask = cv2.inRange(img, lower_bright, upper_bright)
+
+    # 进行形态学操作，增强文本可见性
+    # 创建一个小的椭圆形核
+    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (1, 1))
+    # 膨胀操作，使文字更粗
+    # dilated = cv2.dilate(bright_mask, kernel, iterations=1)
+    # 闭操作，填充文字内的小空隙
+    # closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, kernel)
+    # closed = dilated
+    closed = bright_mask
+
+    # 去除细小噪声：过滤不够大的连通区域
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        if w <= 1:
+            # 用黑色填充宽度小于等于1的区域
+            cv2.drawContours(closed, [contour], -1, 0, thickness=cv2.FILLED)
+        if h <= 13:
+            # 用黑色填充高度小于等于13的区域
+            cv2.drawContours(closed, [contour], -1, 0, thickness=cv2.FILLED)
+
+    return closed
+
+
+def do_num_ocr(numimg: Image):
     richlogger = get_logger(__name__)
-    numimg = imgops.scalecrop(itemimg, 0.45, 0.71, 0.9, 0.86).convert('L')
-    # thr = 110 if item_id != '30024' else 120
-    numimg = crop_blackedge(numimg)
-    # numimg = imgops.crop_blackedge2(numimg, 120)
-    if numimg is not None:
-        numimg = imgops.clear_background(numimg, 120)
-        numimg4legacy = numimg
-        from . import itemdb
-        richlogger.logimage(numimg4legacy)
-        qty_minireco, score = itemdb.num_recognizer.recognize2(numimg4legacy, subset='0123456789.万')
-        richlogger.logtext(f'{qty_minireco=}, {score=}')
-        if score > 0.65:
-            try:
-                return _parse_qty_text(qty_minireco)
-            except:
-                pass
-        numimg = imgops.pad(numimg, 4, 0)
-        numimg = imgops.invert_color(numimg)
+
+    richlogger.logimage(numimg)
+    result = ocr_engine(numimg.array, use_det=False, use_cls=False, use_rec=True)
+    if len(result.txts) > 1:
+        richlogger.logtext(f'{result=}')
+    if result.scores[0] < 0.95:
+        processed = preprocess(numimg.array)  # 二值化预处理
+        processed = crop_to_min_bounding_rect(processed)  # 去除多余黑框
+        processed = add_black_border(processed, border_size=3)  # 加上3像素黑框
+        numimg = crop_blackedge(Image.fromarray(processed))
         richlogger.logimage(numimg)
-        from .ocr import acquire_engine_global_cached
-        eng = acquire_engine_global_cached('zh-cn')
-        from imgreco.ocr import OcrHint
-        result = eng.recognize(numimg, char_whitelist='0123456789.万', tessedit_pageseg_mode='13',
-                               hints=[OcrHint.SINGLE_LINE])
-        qty_text = result.text
-        richlogger.logtext(f'{qty_text=}')
-        try:
-            return _parse_qty_text(qty_text)
-        except:
-            return None
+        result = ocr_engine(numimg.array, use_det=False, use_cls=False, use_rec=True)
+        if len(result.txts) > 1:
+            richlogger.logtext(f'{result=}')
+
+    text = result.txts[0]
+    final_txt = ''
+    for c in text:
+        if c in '0123456789.万':
+            final_txt += c
+    richlogger.logtext(f"OCR: text: '{result.txts[0]}', final text: '{final_txt}', score: {result.scores[0]}")
+    return _parse_qty_text(final_txt), result.scores[0]
+
+
+def get_quantity(itemimg, item_id=None):
+    # richlogger = get_logger(__name__)
+    numimg = imgops.scalecrop(itemimg, 0.40, 0.71, 0.86, 0.86).convert('L')
+    return do_num_ocr(numimg)
+    # # thr = 110 if item_id != '30024' else 120
+    # numimg = crop_blackedge(numimg)
+    # numimg = imgops.crop_blackedge2(numimg, 120)
+    # if numimg is not None:
+    #     numimg = imgops.clear_background(numimg, 120)
+    #     numimg4legacy = numimg
+    #     from . import itemdb
+    #     richlogger.logimage(numimg4legacy)
+    #     qty_minireco, score = itemdb.num_recognizer.recognize2(numimg4legacy, subset='0123456789.万')
+    #     richlogger.logtext(f'{qty_minireco=}, {score=}')
+    #     if score > 0.65:
+    #         try:
+    #             return _parse_qty_text(qty_minireco)
+    #         except:
+    #             pass
+    #     numimg = imgops.pad(numimg, 4, 0)
+    #     numimg = imgops.invert_color(numimg)
+    #     richlogger.logimage(numimg)
+    #     from .ocr import acquire_engine_global_cached
+    #     eng = acquire_engine_global_cached('zh-cn')
+    #     from imgreco.ocr import OcrHint
+    #     result = eng.recognize(numimg, char_whitelist='0123456789.万', tessedit_pageseg_mode='13',
+    #                            hints=[OcrHint.SINGLE_LINE])
+    #     qty_text = result.text
+    #     richlogger.logtext(f'{qty_text=}')
+    #     try:
+    #         return _parse_qty_text(qty_text)
+    #     except:
+    #         return None
 
 
 def _parse_qty_text(qty_text):
+    if not qty_text:
+        return None
     qty_base = float(qty_text.replace(' ', '').replace('万', ''))
     qty_scale = 10000 if '万' in qty_text else 1
     return int(qty_base * qty_scale)

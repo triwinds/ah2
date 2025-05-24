@@ -23,6 +23,7 @@ dependencies = [
     "pywin32>=306,<307; sys_platform == 'win32'",
     "eel>=0.16.0,<0.17",
     "ruamel-yaml>=0.18.10",
+    "rapidocr>=2.1.0",
 ]
 
 [tool.hatch.build.targets.sdist]
