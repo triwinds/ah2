@@ -121,8 +121,12 @@ def check_emulator_is_alive():
     if os.name == 'nt':
         return check_bluestacks_is_alive()
     # return check_redroid_is_alive()
-    from util.adb_utils import check_game_is_in_front
-    return check_port_in_use(5555) and check_game_is_in_front(get_helper())
+    try:
+        from util.adb_utils import check_game_is_in_front
+        return check_port_in_use(5555) and check_game_is_in_front(get_helper())
+    except Exception as e:
+        logger.error(e)
+        return False
 
 
 def check_redroid_is_alive():
