@@ -138,7 +138,7 @@ def _interactive_connect():
         for i, record in enumerate(targets):
             print("%2d. %s" % (i+1, record))
         num = 1
-        if os.name != 'nt':
+        if os.name == 'nt':
             while True:
                 try:
                     num = int(input("请输入序号选择设备: "))
