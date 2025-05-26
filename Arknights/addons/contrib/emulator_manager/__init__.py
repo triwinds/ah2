@@ -154,8 +154,15 @@ def close_redroid():
     path = os.getcwd()
     os.chdir('/root/redroid/')
     logger.info('closing redroid...')
-    os.system('docker-compose down')
-    os.chdir(path)
+    try:
+        process = subprocess.run('docker-compose down', shell=True, capture_output=True, text=True)
+        output = process.stdout + process.stderr
+        if process.returncode != 0:
+            logger.error(f"docker-compose down failed with error: {output}")
+        else:
+            logger.info(f"docker-compose down output: {output}")
+    finally:
+        os.chdir(path)
 
 
 def start_redroid():
@@ -209,6 +216,7 @@ def restart_all():
         start_bluestacks()
     else:
         close_redroid()
+        time.sleep(5)
         start_redroid()
         # unlock_phone()
     retry_count = 1 if os.name == 'nt' else 5

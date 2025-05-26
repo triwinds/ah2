@@ -137,15 +137,16 @@ def _interactive_connect():
         print("检测到多台设备")
         for i, record in enumerate(targets):
             print("%2d. %s" % (i+1, record))
-        num = 0
-        while True:
-            try:
-                num = int(input("请输入序号选择设备: "))
-                if not 1 <= num < len(targets)+1:
-                    raise ValueError()
-                break
-            except ValueError:
-                print("输入不合法，请重新输入")
+        num = 1
+        if os.name != 'nt':
+            while True:
+                try:
+                    num = int(input("请输入序号选择设备: "))
+                    if not 1 <= num < len(targets) + 1:
+                        raise ValueError()
+                    break
+                except ValueError:
+                    print("输入不合法，请重新输入")
         target = targets[num-1]
         _connect_device(target.create_controller())
 
