@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
 from typing import Callable, Optional
 
 import app
@@ -392,7 +393,12 @@ class CombatAddon(AddonBase):
                            **kwargs):
         self.logger.info('maa 开始战斗')
         from Arknights.addons.contrib.maa.maa_cli import maa_fight
-        res = maa_fight(None, desired_count)
+        now = datetime.now().astimezone(tz=timezone(timedelta(hours=4)))
+        wd = now.weekday()
+        if wd in {5, 6}:
+            res = maa_fight(None, desired_count, expiring_medicine=1)
+        else:
+            res = maa_fight(None, desired_count)
         if res['stage_code']:
             self.stage_count[res['stage_code']] = res['times']
             for drops in res['total_drops']:
