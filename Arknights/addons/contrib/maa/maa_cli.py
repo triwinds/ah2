@@ -183,7 +183,8 @@ stage_code_re = re.compile(r'^[a-zA-Z0-9-]+$')
 def maa_fight(stage_code: str, times=None, expiring_medicine=None, timeout=3600):
     if not inited:
         init_maa_cli()
-    stage_code = stage_code.upper()
+    if stage_code:
+        stage_code = stage_code.upper()
     if stage_code and not stage_code_re.match(stage_code):
         raise ValueError('Invalid stage code')
     cmds = ['fight']
