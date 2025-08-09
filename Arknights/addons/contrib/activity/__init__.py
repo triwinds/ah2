@@ -179,7 +179,7 @@ class ActivityAddOn(AddonBase):
             self.run(target_stage_code)
             from Arknights.addons.combat import CombatAddon
             return self.addon(CombatAddon).combat_on_current_stage(times)
-        except RuntimeError:
+        except:
             self.logger.info('try to nav with maa...')
             from Arknights.addons.contrib.maa.maa_cli import maa_fight
             maa_fight(target_stage_code, 0)
