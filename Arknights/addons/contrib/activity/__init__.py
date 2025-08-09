@@ -147,6 +147,7 @@ class ActivityAddOn(AddonBase):
 
     @nav.navigate
     def run(self, target_stage_code, query_only=False):
+        target_stage_code = target_stage_code.upper()
         try:
             self._run(target_stage_code, query_only)
         except:
@@ -308,4 +309,4 @@ class ActivityAddOn(AddonBase):
 
 if __name__ == '__main__':
     from Arknights.configure_launcher import helper
-    helper.addon(ActivityAddOn).nav_and_combat('he-7', 0)
+    helper.addon(ActivityAddOn).nav_and_combat('at-8', 0)
