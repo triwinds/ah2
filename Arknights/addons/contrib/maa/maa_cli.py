@@ -3,6 +3,7 @@ import selectors
 import atexit
 import os
 import shutil
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict
 
@@ -179,7 +180,7 @@ def execute_maa_command(cmd: str|list, timeout: int = 3600):
 stage_code_re = re.compile(r'^[a-zA-Z0-9-]+$')
 
 
-def maa_fight(stage_code, times=None, expiring_medicine=0, timeout=3600):
+def maa_fight(stage_code, times=None, expiring_medicine=None, timeout=3600):
     if not inited:
         init_maa_cli()
     if stage_code and not stage_code_re.match(stage_code):
@@ -191,6 +192,11 @@ def maa_fight(stage_code, times=None, expiring_medicine=0, timeout=3600):
             cmds += ['--series', '0']
     else:
         cmds += ['--series', '0']
+    if expiring_medicine is None:
+        now = datetime.now().astimezone(tz=timezone(timedelta(hours=4)))
+        wd = now.weekday()
+        if wd in {5, 6}:
+            expiring_medicine = 100
     if expiring_medicine:
         cmds += ['--expiring-medicine', str(expiring_medicine)]
     if stage_code:

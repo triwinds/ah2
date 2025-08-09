@@ -175,9 +175,15 @@ class ActivityAddOn(AddonBase):
             self.addon(StageNavigator).find_and_tap_stage_by_ocr(None, target_stage_code, stage_linear)
 
     def nav_and_combat(self, target_stage_code, times=1000):
-        self.run(target_stage_code)
-        from Arknights.addons.combat import CombatAddon
-        return self.addon(CombatAddon).combat_on_current_stage(times)
+        try:
+            self.run(target_stage_code)
+            from Arknights.addons.combat import CombatAddon
+            return self.addon(CombatAddon).combat_on_current_stage(times)
+        except RuntimeError:
+            self.logger.info('try to nav with maa...')
+            from Arknights.addons.contrib.maa.maa_cli import maa_fight
+            maa_fight(target_stage_code, 0)
+
 
     def create_record_for_activity(self, target_stage_code, record_name):
         target_stage_code = target_stage_code.upper()
