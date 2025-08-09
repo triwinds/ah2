@@ -220,8 +220,11 @@ def _parse_fight_log(log: str) -> Dict:
     result = {
         "stage_code": "",
         "times": 0,
-        "total_drops": []
+        "total_drops": [],
+        'error': False
     }
+    if 'error' in log.lower():
+        result['error'] = True
 
     # 解析关卡名称和次数
     fight_match = re.search(r'Fight (\S+) (\d+) times', log)

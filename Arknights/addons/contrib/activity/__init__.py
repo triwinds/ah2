@@ -149,11 +149,12 @@ class ActivityAddOn(AddonBase):
     def run(self, target_stage_code, query_only=False):
         target_stage_code = target_stage_code.upper()
         try:
-            self._run(target_stage_code, query_only)
+            return self._run(target_stage_code, query_only)
         except:
             self.logger.info('try to nav with maa...')
             from Arknights.addons.contrib.maa.maa_cli import maa_fight
-            maa_fight(target_stage_code, 0)
+            res = maa_fight(target_stage_code, 0)
+            return not res.get('error', False)
 
     def _run(self, target_stage_code, query_only=False):
         target_stage_code = target_stage_code.upper()
