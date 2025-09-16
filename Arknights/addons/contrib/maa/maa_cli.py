@@ -178,6 +178,7 @@ def execute_maa_command(cmd: str|list, timeout: int = 3600):
     return out.decode()
 
 stage_code_re = re.compile(r'^[a-zA-Z0-9-]+$')
+avemujica_re = re.compile(r'^SS-\d+$')
 
 
 def maa_fight(stage_code: str, times=None, expiring_medicine=None, timeout=3600):
@@ -187,6 +188,8 @@ def maa_fight(stage_code: str, times=None, expiring_medicine=None, timeout=3600)
         stage_code = stage_code.upper()
     if stage_code and not stage_code_re.match(stage_code):
         raise ValueError('Invalid stage code')
+    if stage_code and avemujica_re.match(stage_code):
+        stage_code = 'AveMujica-' + stage_code[3:]
     cmds = ['fight']
     if times is not None:
         cmds += ['--times', str(times)]
