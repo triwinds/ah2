@@ -75,3 +75,29 @@ class CommonAddon(AddonBase):
             self.control.input.send_key(4)  # KEYCODE_BACK
             self.delay(3)
         self.logger.info("已回到主页")
+
+    def exit_game(self):  # 退出游戏
+        import imgreco.common
+        
+        self.logger.info("正在退出游戏")
+        
+        # 先回到主页
+        self.back_to_main()
+        
+        # 按返回键触发退出对话框
+        self.logger.info("按返回键触发退出对话框")
+        self.control.input.send_key(4)  # KEYCODE_BACK
+        self.delay(2)
+        
+        # 检测退出确认对话框
+        screenshot = self.screenshot()
+        dlgtype, ocr = imgreco.common.recognize_dialog(screenshot)
+        self.logger.debug(f"检查对话框：{dlgtype}, {ocr}")
+        
+        if dlgtype == 'yesno' and ('退出游戏' in ocr or '确认退出游戏' in ocr):
+            self.logger.info("发现退出游戏确认对话框，点击确认")
+            self.tap_rect(imgreco.common.get_dialog_right_button_rect(screenshot), post_delay=2)
+            self.logger.info("已退出游戏")
+        else:
+            self.logger.warning("未检测到退出游戏确认对话框")
+            raise RuntimeError('未检测到退出游戏确认对话框')

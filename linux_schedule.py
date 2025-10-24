@@ -147,12 +147,15 @@ def do_works():
         logger.info(f'finish at: {datetime.now()}')
         send_summary(loots, stage_count, common_task_result)
         time.sleep(60)
+        from Arknights.addons.common import CommonAddon
         if common_config.rouge_like:
-            from Arknights.addons.common import CommonAddon
             helper.addon(CommonAddon).back_to_main()
             maa_rouge_like('Sami')
         else:
-            close_emulator()
+            try:
+                helper.addon(CommonAddon).exit_game()
+            finally:
+                close_emulator()
     except Exception as e:
         from util.msg_sender import send_by_tg_bot
         send_by_tg_bot('arh-fail', traceback.format_exc())

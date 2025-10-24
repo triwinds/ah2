@@ -3,16 +3,16 @@ name = "ah2"
 version = "0.1.0"
 description = ""
 authors = [{ name = "triwinds", email = "triwinds@users.noreply.github.com" }]
-requires-python = "~=3.11"
+requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
     "coloredlogs>=15.0.1,<16",
     "scipy>=1.11.1,<2",
-    "numpy>=1.25.1,<2",
+    "numpy>=2",
     "opencv-python>=4.8.0.74,<5",
     "opencv-contrib-python>=4.8.0.74,<5",
-    "pillow>=10.0.0,<11",
-    "requests>=2.31.0,<3",
+    "pillow>=10.0.0",
+    "requests>=2.31.0",
     "requests-cache>=1.1.0,<2",
     "colorama>=0.4.6,<0.5",
     "textdistance>=4.5.0,<5",
@@ -20,8 +20,8 @@ dependencies = [
     "lz4>=4.3.2,<5",
     "ppocr-onnx>=0.0.3.9,<0.1",
     "apscheduler>=3.10.1,<4",
-    "pywin32>=306,<307; sys_platform == 'win32'",
-    "eel>=0.16.0,<0.17",
+    "pywin32>=311; sys_platform == 'win32'",
+    #    "eel>=0.16.0,<0.17",
     "ruamel-yaml>=0.18.10",
     "rapidocr>=2.1.0",
 ]

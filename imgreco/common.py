@@ -93,7 +93,7 @@ def check_dialog(img):
     ok = resources.load_image_cached('common/dialog_1btn.png', 'L')
     pt1, coef1 = imgops.match_template(img, yesno)
     pt2, coef2 = imgops.match_template(img, ok)
-    print(pt1, coef1, pt2, coef2)
+    # print(pt1, coef1, pt2, coef2)
     if max(coef1, coef2) > 0.5:
         return ('yesno', (pt1[1] + 360)/720 * oldheight) if coef1 > coef2 else ('ok', (pt2[1] + 360)/720 * oldheight)
     return None, None
