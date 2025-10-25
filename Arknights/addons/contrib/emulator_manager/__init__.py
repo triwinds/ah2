@@ -20,11 +20,11 @@ logger = logging.getLogger(__name__)
 
 def start_and_login_arknights(helper):
     helper.control.adb.shell('am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
-    time.sleep(35)
+    time.sleep(50)
     retry_click_img(start_img, 'start')
-    time.sleep(10)
-    retry_click_img(login_img, 'login')
     time.sleep(30)
+    retry_click_img(login_img, 'login')
+    time.sleep(50)
     if os.name != 'nt':
         time.sleep(30)
 
