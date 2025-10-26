@@ -161,7 +161,7 @@ def close_redroid():
 
     # Check if redroid container exists and is running
     logger.info('checking if redroid container is running...')
-    check_process = subprocess.run(['docker-compose', 'ps', '-q'], capture_output=True, text=True)
+    check_process = subprocess.run(['docker', 'compose', 'ps', '-q'], capture_output=True, text=True)
     if check_process.returncode != 0 or not check_process.stdout.strip():
         logger.info('redroid container is not running, skipping shutdown process')
         os.chdir(path)
@@ -183,14 +183,14 @@ def close_redroid():
     # Stop the container instead of down to preserve data
     logger.info('stopping redroid container...')
     try:
-        process = subprocess.run(['docker-compose', 'stop'], capture_output=True, text=True, timeout=30)
+        process = subprocess.run(['docker', 'compose', 'stop'], capture_output=True, text=True, timeout=30)
         output = process.stdout + process.stderr
         if process.returncode != 0:
-            logger.error(f"docker-compose stop failed with error: {output}")
+            logger.error(f"docker compose stop failed with error: {output}")
         else:
-            logger.info(f"docker-compose stop completed successfully: {output}")
+            logger.info(f"docker compose stop completed successfully: {output}")
     except subprocess.TimeoutExpired:
-        logger.error('docker-compose stop timed out')
+        logger.error('docker compose stop timed out')
     finally:
         os.chdir(path)
 
@@ -202,24 +202,24 @@ def start_redroid():
 
     # Check if container is already running
     logger.info('checking if redroid container is already running...')
-    check_process = subprocess.run(['docker-compose', 'ps', '-q'], capture_output=True, text=True)
+    check_process = subprocess.run(['docker', 'compose', 'ps', '-q'], capture_output=True, text=True)
     if check_process.returncode == 0 and check_process.stdout.strip():
         logger.info('redroid container is already running, skipping startup')
         os.chdir(path)
         return
 
-    logger.info('starting redroid container with docker-compose...')
+    logger.info('starting redroid container with docker compose...')
     try:
-        process = subprocess.run(['docker-compose', 'up', '-d'], capture_output=True, text=True, timeout=60)
+        process = subprocess.run(['docker', 'compose', 'up', '-d'], capture_output=True, text=True, timeout=60)
         output = process.stdout + process.stderr
         if process.returncode != 0:
-            logger.error(f"docker-compose up failed with error: {output}")
+            logger.error(f"docker compose up failed with error: {output}")
             raise RuntimeError(f"Failed to start redroid container: {output}")
         else:
-            logger.info(f"docker-compose up completed successfully: {output}")
+            logger.info(f"docker compose up completed successfully: {output}")
     except subprocess.TimeoutExpired:
-        logger.error('docker-compose up timed out')
-        raise RuntimeError('docker-compose up timed out')
+        logger.error('docker compose up timed out')
+        raise RuntimeError('docker compose up timed out')
 
     logger.info('waiting for container to fully initialize...')
     time.sleep(30)
