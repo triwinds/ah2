@@ -214,10 +214,31 @@ def maa_fight(stage_code: str, times=None, expiring_medicine=None, timeout=3600)
     return _parse_fight_log(output)
 
 
-def maa_startup(timeout=120):
+def maa_startup(timeout=120, client_type='Official', **kwargs):
+    """
+    Enhanced MAA startup function with additional parameters
+    
+    Args:
+        timeout: Startup timeout in seconds
+        client_type: Client type (Official, Bilibili, txwy)
+        **kwargs: Additional startup parameters
+    """
     if not inited:
         init_maa_cli()
-    execute_maa_command('startup Official', timeout=timeout)
+    
+    # Build startup command
+    cmd = ['startup', client_type]
+    
+    # Add additional parameters
+    for key, value in kwargs.items():
+        if isinstance(value, bool):
+            if value:
+                cmd.append(f'--{key}')
+        else:
+            cmd.extend([f'--{key}', str(value)])
+    logger.info(f'Executing MAA startup with command: {cmd}')
+    execute_maa_command(cmd, timeout=timeout)
+
 
 
 def _parse_fight_log(log: str) -> Dict:

@@ -8,6 +8,7 @@ from Arknights.addons.common import CommonAddon
 from util import cvimage
 from util.richlog import get_logger
 from Arknights.configure_launcher import get_helper
+from typing import Tuple, Optional
 
 
 file_root = os.path.realpath(os.path.dirname(__file__)) + '/'
@@ -18,7 +19,7 @@ rich_logger = get_logger('emulator_manager')
 logger = logging.getLogger(__name__)
 
 
-def start_and_login_arknights(helper):
+def start_and_login_arknights_adb(helper):
     helper.control.adb.shell('am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext')
     time.sleep(50)
     retry_click_img(start_img, 'start')
@@ -284,6 +285,80 @@ def restart_all():
             helper = get_helper()
             helper.control.adb.shell('am force-stop com.hypergryph.arknights')
             retry_count -= 1
+
+
+def start_and_login_arknights_maa(helper=None) -> Tuple[bool, str]:
+    """
+    Simple startup function using MAA CLI
+    
+    Args:
+        helper: Arknights helper instance (optional)
+    
+    Returns:
+        Tuple[bool, str]: (success, message)
+    """
+    try:
+        from Arknights.addons.contrib.maa.maa_cli import maa_startup
+        if helper is None:
+            helper = get_helper()
+        maa_startup()
+        return True, "MAA startup completed successfully"
+    except Exception as e:
+        logger.error(f"MAA startup failed: {str(e)}")
+        # Fallback to original method
+        if helper is None:
+            helper = get_helper()
+        start_and_login_arknights(helper)
+        return True, "Fallback to original startup method completed"
+
+
+def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
+    """
+    Unified startup function that prioritizes MAA CLI for starting and logging into Arknights
+    
+    Args:
+        helper: Arknights helper instance (optional)
+    
+    Returns:
+        Tuple[bool, str]: (success, message)
+    """
+    if helper is None:
+        helper = get_helper()
+    
+    # Try MAA CLI first with retry
+    max_retry = 3
+    retry_count = 0
+    while retry_count < max_retry:
+        try:
+            logger.info(f'Attempting to start Arknights using MAA CLI (attempt {retry_count + 1}/{max_retry})')
+            from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, maa_startup
+            
+            # Initialize MAA CLI if not already done
+            init_maa_cli()
+            
+            # Try to start the game using MAA CLI
+            maa_startup(timeout=300)
+            logger.info('MAA CLI startup completed successfully')
+            return True, "MAA CLI startup completed successfully"
+            
+        except Exception as e:
+            retry_count += 1
+            logger.error(f'MAA CLI startup attempt {retry_count} failed: {str(e)}')
+            if retry_count >= max_retry:
+                logger.warning('All MAA CLI startup attempts failed, falling back to ADB method')
+            else:
+                logger.info(f'Retrying MAA CLI startup ({retry_count}/{max_retry})')
+                time.sleep(5)  # Wait before retry
+    
+    # Fallback to ADB method if MAA CLI failed
+    try:
+        logger.info('Falling back to ADB startup method')
+        start_and_login_arknights_adb(helper)
+        logger.info('ADB startup completed successfully')
+        return True, "Fallback to ADB startup method completed successfully"
+    except Exception as e:
+        logger.error(f'ADB startup failed: {str(e)}')
+        return False, f"Both MAA CLI and ADB startup failed. MAA error: {str(e)}, ADB error: {str(e)}"
 
 
 if __name__ == '__main__':

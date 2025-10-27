@@ -15,6 +15,7 @@ from Arknights.addons.record import RecordAddon
 from Arknights.configure_launcher import get_helper
 from automator import BaseAutomator
 from imgreco.itemdb import update_net
+from Arknights.addons.contrib.emulator_manager import start_and_login_arknights
 
 logger = logging.getLogger(__file__)
 task_cache_path = app.cache_path.joinpath('common_task_cache.json')
@@ -93,8 +94,9 @@ def start_maa_process(helper: BaseAutomator):
             from util.adb_utils import check_game_is_in_front
             if not check_game_is_in_front(helper):
                 logger.info('Game is not in front, restart game...')
-                from Arknights.addons.contrib.emulator_manager import start_and_login_arknights
-                start_and_login_arknights(helper)
+                success, message = start_and_login_arknights(helper)
+                if not success:
+                    logger.error(f'Failed to restart game: {message}')
             else:
                 logger.info('Game is in front, run maa startup...')
                 from Arknights.addons.contrib.maa.maa_cli import maa_startup
