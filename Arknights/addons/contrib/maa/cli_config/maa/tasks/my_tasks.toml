@@ -8,6 +8,7 @@ facility = ["Training", "Trade", "Reception", "Mfg", "Control", "Power", "Office
 # 交易站 SyntheticJade
 drones = "Money"
 replenish = true
+continue_training = true
 
 
 [[tasks]]
