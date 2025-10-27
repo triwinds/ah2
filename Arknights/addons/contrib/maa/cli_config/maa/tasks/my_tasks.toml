@@ -3,6 +3,7 @@ name = "Infrast"
 type = "Infrast"
 [tasks.params]
 #https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/master/src/MaaCore/Vision/Infrast/InfrastFacilityImageAnalyzer.cpp#L14
+# https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/master/src/MaaWpfGui/Models/AsstTasks/AsstInfrastTask.cs#L102
 facility = ["Training", "Trade", "Reception", "Mfg", "Control", "Power", "Office", "Dorm"]
 # "_NotUse"、"Money"、"SyntheticJade"、"CombatRecord"、"PureGold"、"OriginStone"、"Chip"
 # 交易站 SyntheticJade
