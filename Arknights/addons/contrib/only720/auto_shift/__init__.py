@@ -7,14 +7,13 @@ import time
 
 import cv2
 import numpy as np
-from ppocronnx.predict_system import TextSystem
 
 from Arknights.addons.contrib.base import crop_cv_by_rect
 from Arknights.addons.contrib.common_cache import load_game_data
 from automator import AddonBase
 from imgreco.ocr.ppocr import search_in_list, ocr
 from imgreco.stage_ocr import do_tag_ocr
-
+from imgreco.ppocr_utils import get_ppocr
 logger = logging.getLogger(__name__)
 
 
@@ -33,13 +32,8 @@ character_table = load_game_data('character_table')
 cn_op_names = set()
 for cid, character_info in character_table.items():
     cn_op_names.add(character_info['name'])
-ppocr = TextSystem(use_angle_cls=False, unclip_ratio=4, box_thresh=0.3)
-cs = 'E'
-for name in cn_op_names:
-    for c in name:
-        if c not in cs:
-            cs += c
-ppocr.set_char_whitelist(cs)
+
+ppocr = get_ppocr()
 ppocr_fix_map = {
     'e': '山',
     '早': '霜叶',
