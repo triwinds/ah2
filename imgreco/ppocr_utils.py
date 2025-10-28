@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import lru_cache, cache
 from typing import List
 
 import numpy as np
@@ -30,12 +30,9 @@ class OcrResult:
 class RapidOCRAdapter:
     """RapidOCR适配器，保持与ppocr的API兼容"""
 
-    def __init__(self, ocr):
-        self.ocr = ocr
-
     def detect_and_ocr(self, img, drop_score=0.3, box_thresh=0.1, unclip_ratio=1.6) -> List[OcrResult]:
         """适配detect_and_ocr方法"""
-        ocr_result = self.ocr(img, box_thresh=box_thresh, unclip_ratio=unclip_ratio)
+        ocr_result = get_rapidocr()(img, box_thresh=box_thresh, unclip_ratio=unclip_ratio)
 
         results = []
         if ocr_result is None:
@@ -54,7 +51,7 @@ class RapidOCRAdapter:
 
     def ocr_single_line(self, img):
         """适配ocr_single_line方法，返回字符串列表"""
-        ocr_result = self.ocr(img)
+        ocr_result = get_no_det_rapidocr()(img)
         if ocr_result is None:
             return []
 
@@ -68,7 +65,7 @@ class RapidOCRAdapter:
         """适配ocr_lines方法，返回字符串列表的列表"""
         results = []
         for img in img_list:
-            ocr_result = self.ocr(img)
+            ocr_result = get_no_det_rapidocr()(img)
             if ocr_result is None:
                 results.append([])
                 continue
@@ -81,20 +78,21 @@ class RapidOCRAdapter:
         return results
 
 
-rapid_ocr = None
-
-
+@lru_cache(1)
 def get_rapidocr():
     from rapidocr import RapidOCR
-    global rapid_ocr
-    if rapid_ocr is None:
-        rapid_ocr = RapidOCR()
-    return rapid_ocr
+    return RapidOCR(params={"Global.log_level": "ERROR"})
+
+
+@lru_cache(1)
+def get_no_det_rapidocr():
+    from rapidocr import RapidOCR
+    return RapidOCR(params={"Global.log_level": "ERROR", "Global.use_det": False})
 
 
 @lru_cache(1)
 def get_ppocr():
-    return RapidOCRAdapter(get_rapidocr())
+    return RapidOCRAdapter()
 
 
 def calc_box_center(box, scale=1):

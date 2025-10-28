@@ -12,7 +12,8 @@ is_online = False
 
 info = "rapidocr"
 
-from imgreco.ppocr_utils import get_rapidocr
+from imgreco.ppocr_utils import get_rapidocr, get_no_det_rapidocr
+
 ocr = get_rapidocr()
 
 
@@ -73,10 +74,10 @@ def ocr_for_single_line(img, cand_alphabet: str = None):
     #     ocr.set_char_whitelist(cand_alphabet)
     
     # RapidOCR returns a RapidOCROutput object with attributes
-    ocr_result = ocr(img)
+    ocr_result = get_no_det_rapidocr()(img)
     texts = ocr_result.txts if ocr_result else []
     if texts:
-        res = texts[0]
+        res = [(texts[0], ocr_result.scores[0])]
     else:
         res = []
     
