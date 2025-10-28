@@ -12,10 +12,52 @@ logger = logging.getLogger(__name__)
 richlogger = get_logger(__name__)
 
 
+class RapidOCRAdapter:
+    """RapidOCR适配器，保持与ppocr的API兼容"""
+
+    def __init__(self, ocr):
+        self.ocr = ocr
+
+    def detect_and_ocr(self, img, drop_score=0.3, box_thresh=0.1, unclip_ratio=1.6):
+        """适配detect_and_ocr方法"""
+        ocr_result = self.ocr(img, box_thresh=box_thresh, unclip_ratio=unclip_ratio)
+
+        class OcrResult:
+            def __init__(self, ocr_text, score, box):
+                self.ocr_text = ocr_text
+                self.score = score
+                self.box = box
+
+        results = []
+        if ocr_result and ocr_result.boxes is not None and ocr_result.txts is not None and ocr_result.scores is not None:
+            for box, text, score in zip(ocr_result.boxes, ocr_result.txts, ocr_result.scores):
+                if score >= drop_score:
+                    results.append(OcrResult(text, score, box))
+        return results
+
+    def ocr_single_line(self, img):
+        """适配ocr_single_line方法"""
+        ocr_result = self.ocr(img)
+        if ocr_result and ocr_result.txts and ocr_result.scores:
+            return [(ocr_result.txts[0], ocr_result.scores[0])] if ocr_result.txts[0] else []
+        return []
+
+    def ocr_lines(self, img_list):
+        """适配ocr_lines方法"""
+        results = []
+        for img in img_list:
+            ocr_result = self.ocr(img)
+            if ocr_result and ocr_result.txts and ocr_result.scores:
+                results.append([(text, score) for text, score in zip(ocr_result.txts, ocr_result.scores)])
+            else:
+                results.append([])
+        return results
+
+
 @lru_cache(1)
 def get_ppocr():
-    from ppocronnx.predict_system import TextSystem
-    return TextSystem(box_thresh=0.1)
+    from rapidocr import RapidOCR
+    return RapidOCRAdapter(RapidOCR())
 
 
 def calc_box_center(box, scale=1):
