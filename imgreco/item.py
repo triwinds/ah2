@@ -18,10 +18,10 @@ from . import imgops
 from . import minireco
 from . import resources
 from . import common
-from rapidocr import RapidOCR
+from imgreco.ppocr_utils import get_rapidocr
 
 
-ocr_engine = RapidOCR()
+ocr_engine = get_rapidocr()
 richlogger = get_logger(__name__)
 logger = logging.getLogger(__name__)
 

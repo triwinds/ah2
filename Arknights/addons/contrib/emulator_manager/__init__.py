@@ -9,6 +9,7 @@ from util import cvimage
 from util.richlog import get_logger
 from Arknights.configure_launcher import get_helper
 from typing import Tuple, Optional
+from util.cvimage import Image as CVImage
 
 
 file_root = os.path.realpath(os.path.dirname(__file__)) + '/'
@@ -30,7 +31,7 @@ def start_and_login_arknights_adb(helper):
         time.sleep(30)
 
 
-def screenshot():
+def screenshot() -> CVImage:
     helper = get_helper()
     addon = helper.addon(CommonAddon)
     return addon.screenshot()
@@ -290,10 +291,10 @@ def restart_all():
 def start_and_login_arknights_maa(helper=None) -> Tuple[bool, str]:
     """
     Simple startup function using MAA CLI
-    
+
     Args:
         helper: Arknights helper instance (optional)
-    
+
     Returns:
         Tuple[bool, str]: (success, message)
     """
@@ -310,6 +311,79 @@ def start_and_login_arknights_maa(helper=None) -> Tuple[bool, str]:
             helper = get_helper()
         start_and_login_arknights(helper)
         return True, "Fallback to original startup method completed"
+
+
+def check_and_click_cache_repair() -> bool:
+    """
+    Check screen top-left for '清除缓存' and then '资源修复', click if found
+
+    Returns:
+        bool: True if both clicks were successful, False otherwise
+    """
+    from imgreco.ppocr_utils import detect_box, get_ppocr
+    from util.cvimage import Image as CVImage
+
+    # First screenshot to check for '清除缓存'
+    screen = screenshot()
+    # Crop to top-left portion of the screen (e.g., first 1/3 width and height)
+    width, height = screen.size
+    top_left_region = screen.crop((0, 0, width // 3, height // 3))
+
+    # Convert to CVImage for detect_box
+    pos, score = detect_box(top_left_region, '清除缓存')
+
+    if pos is not None and score > 0.5:
+        logger.info(f'Found "清除缓存" at {pos} with score {score:.3f}, clicking...')
+        helper = get_helper()
+        addon = helper.addon(CommonAddon)
+        # Click at the detected position (relative to the cropped image)
+        addon.tap_point(pos)
+
+        # Wait 2 seconds after clicking
+        time.sleep(2)
+
+        # Second screenshot to check for '资源修复'
+        screen = screenshot()
+        pos2, score2 = detect_box(screen, '资源修复')
+
+        if pos2 is not None and score2 > 0.5:
+            logger.info(f'Found "资源修复" at {pos2} with score {score2:.3f}, clicking...')
+            # Click at the detected position for resource repair
+            addon.tap_point(pos2)
+            time.sleep(2)
+            import imgreco.common
+            screen = screenshot()
+            addon.tap_rect(imgreco.common.get_dialog_right_button_rect(screen))
+            logger.info('等待修复中...')
+            time.sleep(20)
+            st = time.time()
+            max_wait_time = 300
+            fixed_flag = False
+            while time.time() - st < max_wait_time:
+                logger.info('等待修复中...')
+                screen = screenshot()
+                res = get_ppocr().detect_and_ocr(screen.array)
+                flag = False
+                for ocr_res in res:
+                    if ocr_res.ocr_text.startswith('正在恢复'):
+                        flag = True
+                        break
+                if flag:
+                    time.sleep(3)
+                else:
+                    fixed_flag = True
+                    break
+            if fixed_flag:
+                logger.info('修复完成')
+            else:
+                logger.warning(f'未能在 {max_wait_time} 秒内完成修复')
+            return True
+        else:
+            logger.warning(f'Did not find "资源修复" after clicking "清除缓存" (score: {score2:.3f})')
+            return False
+    else:
+        logger.info(f'Did not find "清除缓存" in top-left region (score: {score:.3f})')
+        return False
 
 
 def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
@@ -337,7 +411,7 @@ def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
             init_maa_cli()
             
             # Try to start the game using MAA CLI
-            maa_startup(timeout=300)
+            maa_startup(timeout=180)
             logger.info('MAA CLI startup completed successfully')
             return True, "MAA CLI startup completed successfully"
             
@@ -349,6 +423,13 @@ def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
             else:
                 logger.info(f'Retrying MAA CLI startup ({retry_count}/{max_retry})')
                 time.sleep(5)  # Wait before retry
+    logger.info('maa startup 失败, 尝试修复资源')
+    if check_and_click_cache_repair():
+        try:
+            from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, maa_startup
+            maa_startup(timeout=180)
+        except Exception as e:
+            logger.error(f'修复资源后，maa startup 错误: {str(e)}')
     
     # Fallback to ADB method if MAA CLI failed
     try:

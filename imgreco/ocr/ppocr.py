@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 from functools import lru_cache
 import logging
-from rapidocr import RapidOCR
 from . import OcrHint
 
 is_online = False
@@ -13,7 +12,8 @@ is_online = False
 
 info = "rapidocr"
 
-ocr = RapidOCR()
+from imgreco.ppocr_utils import get_rapidocr
+ocr = get_rapidocr()
 
 
 # 模块说明，用于在 log 中显示
@@ -78,7 +78,7 @@ def ocr_for_single_line(img, cand_alphabet: str = None):
     if texts:
         res = texts[0]
     else:
-        res = None
+        res = []
     
     # RapidOCR doesn't support char_whitelist directly
     # if cand_alphabet:
