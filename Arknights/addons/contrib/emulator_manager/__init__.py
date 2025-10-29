@@ -357,7 +357,7 @@ def check_and_click_cache_repair() -> bool:
             logger.info('等待修复中...')
             time.sleep(20)
             st = time.time()
-            max_wait_time = 300
+            max_wait_time = 600  # 10 minutes
             fixed_flag = False
             while time.time() - st < max_wait_time:
                 logger.info('等待修复中...')
