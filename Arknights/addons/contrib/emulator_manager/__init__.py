@@ -400,7 +400,7 @@ def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
         helper = get_helper()
     
     # Try MAA CLI first with retry
-    max_retry = 3
+    max_retry = 1
     retry_count = 0
     while retry_count < max_retry:
         try:
