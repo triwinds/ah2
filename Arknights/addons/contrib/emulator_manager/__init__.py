@@ -360,7 +360,7 @@ def check_and_click_cache_repair() -> bool:
             max_wait_time = 600  # 10 minutes
             fixed_flag = False
             while time.time() - st < max_wait_time:
-                logger.info('等待修复中...')
+                logger.info('等待修复中, %d / %d 秒' % (time.time() - st, max_wait_time))
                 screen = screenshot()
                 res = get_ppocr().detect_and_ocr(screen.array)
                 flag = False
