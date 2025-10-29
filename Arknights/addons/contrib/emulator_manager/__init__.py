@@ -384,6 +384,33 @@ def check_and_click_cache_repair() -> bool:
     else:
         logger.info(f'Did not find "清除缓存" in top-left region (score: {score:.3f})')
         return False
+    
+
+def maa_startup_with_retry(max_retry: int = 1, retry_delay: int = 5, timeout: int = 180) -> bool:
+    retry_count = 0
+    while retry_count < max_retry:
+        try:
+            logger.info(f'Attempting to start Arknights using MAA CLI (attempt {retry_count + 1}/{max_retry})')
+            from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, maa_startup
+            
+            # Initialize MAA CLI if not already done
+            init_maa_cli()
+            
+            # Try to start the game using MAA CLI
+            maa_startup(timeout=timeout)
+            logger.info('MAA CLI startup completed successfully')
+            return True, "MAA CLI startup completed successfully"
+            
+        except Exception as e:
+            retry_count += 1
+            logger.error(f'MAA CLI startup attempt {retry_count} failed: {str(e)}')
+            if retry_count >= max_retry:
+                logger.warning('All MAA CLI startup attempts failed')
+                raise
+            else:
+                logger.info(f'Retrying MAA CLI startup ({retry_count}/{max_retry})')
+                time.sleep(retry_delay)  # Wait before retry
+    raise RuntimeError('MAA CLI startup failed after maximum retries')
 
 
 def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
@@ -400,34 +427,11 @@ def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
         helper = get_helper()
     
     # Try MAA CLI first with retry
-    max_retry = 1
-    retry_count = 0
-    while retry_count < max_retry:
-        try:
-            logger.info(f'Attempting to start Arknights using MAA CLI (attempt {retry_count + 1}/{max_retry})')
-            from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, maa_startup
-            
-            # Initialize MAA CLI if not already done
-            init_maa_cli()
-            
-            # Try to start the game using MAA CLI
-            maa_startup(timeout=180)
-            logger.info('MAA CLI startup completed successfully')
-            return True, "MAA CLI startup completed successfully"
-            
-        except Exception as e:
-            retry_count += 1
-            logger.error(f'MAA CLI startup attempt {retry_count} failed: {str(e)}')
-            if retry_count >= max_retry:
-                logger.warning('All MAA CLI startup attempts failed, falling back to ADB method')
-            else:
-                logger.info(f'Retrying MAA CLI startup ({retry_count}/{max_retry})')
-                time.sleep(5)  # Wait before retry
+    maa_startup_with_retry(max_retry=1, retry_delay=1)
     logger.info('maa startup 失败, 尝试修复资源')
     if check_and_click_cache_repair():
         try:
-            from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, maa_startup
-            maa_startup(timeout=180)
+            maa_startup_with_retry(max_retry=3, retry_delay=1)
         except Exception as e:
             logger.error(f'修复资源后，maa startup 错误: {str(e)}')
     
