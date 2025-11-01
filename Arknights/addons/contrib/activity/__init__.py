@@ -289,12 +289,15 @@ class ActivityAddOn(AddonBase):
     def open_activity_from_homepage(self, activity_name):
         screen = self.screenshot()
         w, h = self.viewport
-        start_x = w - w // 3
-        right_area = screen.crop((start_x, 0, w, h // 2))
+        # crop coords are relative to the full screen; compute left/top offsets
+        left = 100*self.vw - 38.611*self.vh
+        top = 11.250*self.vh
+        right_area = screen.crop((left, top, 100*self.vw, 40.972*self.vh))
         box_center, max_score = detect_box(right_area, activity_name, no_scale=True)
         if max_score > 0.1:
             logger.info(f"检测到 {activity_name} 活动, 可能是当前活动, 尝试打开...")
-            box_center = box_center[0] + start_x, box_center[1]
+            # convert box_center (relative to right_area) to screen coordinates
+            box_center = (box_center[0] + left, box_center[1] + top)
             self.tap_point(box_center, self.delay_after_open_activity)
             return True
         return False
