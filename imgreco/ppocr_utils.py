@@ -6,6 +6,9 @@ import cv2
 import textdistance
 import logging
 
+from rapidocr.ch_ppocr_rec import TextRecOutput
+from rapidocr.utils.output import RapidOCROutput
+
 from util.cvimage import Image
 from util.richlog import get_logger
 
@@ -32,7 +35,7 @@ class RapidOCRAdapter:
 
     def detect_and_ocr(self, img, drop_score=0.3, box_thresh=0.1, unclip_ratio=1.6) -> List[OcrResult]:
         """适配detect_and_ocr方法"""
-        ocr_result = get_rapidocr()(img, box_thresh=box_thresh, unclip_ratio=unclip_ratio)
+        ocr_result: RapidOCROutput = get_rapidocr()(img, box_thresh=box_thresh, unclip_ratio=unclip_ratio)
 
         results = []
         if ocr_result is None:
@@ -56,10 +59,9 @@ class RapidOCRAdapter:
             return []
 
         # 返回元组列表
-        res = []
         for text, score in zip(ocr_result.txts, ocr_result.scores):
-            res.append((text, score))
-        return res
+            return text, score
+        return None
 
     def ocr_lines(self, img_list):
         """适配ocr_lines方法，返回字符串列表的列表"""
@@ -78,10 +80,10 @@ class RapidOCRAdapter:
         return results
 
 
-@lru_cache(1)
+@cache
 def get_rapidocr():
     from rapidocr import RapidOCR
-    return RapidOCR(params={"Global.log_level": "ERROR"})
+    return RapidOCR(params={"Global.log_level": "ERROR", "Global.use_det": True, "Global.use_rec": True})
 
 
 @lru_cache(1)
