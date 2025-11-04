@@ -34,13 +34,13 @@ def tell_stars(starsimg):
     threshold = height * (width / 12)
     stars = []
     star1 = thstars[:, 0:starwidth]
-    stars.append(np.count_nonzero(star1) > threshold)
+    stars.append(bool(np.count_nonzero(star1) > threshold))
 
     star2 = thstars[:, starwidth:starwidth * 2]
-    stars.append(np.count_nonzero(star2) > threshold)
+    stars.append(bool(np.count_nonzero(star2) > threshold))
 
     star3 = thstars[:, starwidth * 2:]
-    stars.append(np.count_nonzero(star3) > threshold)
+    stars.append(bool(np.count_nonzero(star3) > threshold))
     return tuple(stars)
 
 
