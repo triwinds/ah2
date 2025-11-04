@@ -77,9 +77,9 @@ def ocr_for_single_line(img, cand_alphabet: str = None):
     ocr_result = get_no_det_rapidocr()(img)
     texts = ocr_result.txts if ocr_result else []
     if texts:
-        res = [(texts[0], ocr_result.scores[0])]
+        res = texts[0].strip()
     else:
-        res = []
+        res = ''
     
     # RapidOCR doesn't support char_whitelist directly
     # if cand_alphabet:
