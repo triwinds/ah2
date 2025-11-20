@@ -23,6 +23,7 @@ from imgreco.itemdb import update_net
 from Arknights.addons.contrib.maa import maa_rouge_like, shutdown_maa
 from Arknights.addons.contrib.emulator_manager import restart_all, check_emulator_is_alive, close_emulator
 from common_config import common_config
+from web_admin import WebAdmin
 
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None
@@ -176,14 +177,26 @@ def update_cache():
     check_game_data_version()
 
 
+def get_current_helper():
+    """Helper function to get the current helper instance"""
+    global helper
+    return helper
+
+
 def main():
     os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
     os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
     do_works()
     scheduler = BlockingScheduler(timezone='Asia/Shanghai')
     # scheduler.add_job(recruit, 'cron', day_of_week='0,1,2', hour='19', minute=0)
-    scheduler.add_job(close_emulator, 'cron', day='*', hour=4, minute=5)
-    scheduler.add_job(do_works, 'cron', hour='*/4', minute=15)
+    scheduler.add_job(close_emulator, 'cron', day='*', hour=4, minute=5, id='close_emulator')
+    scheduler.add_job(do_works, 'cron', hour='*/4', minute=15, id='do_works')
+    
+    # Start web admin interface
+    web_admin = WebAdmin(scheduler, get_current_helper, port=8888)
+    web_admin.start()
+    logger.info('Web admin started at http://localhost:8888')
+    
     scheduler.start()
 
 
