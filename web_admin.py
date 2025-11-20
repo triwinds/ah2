@@ -138,6 +138,61 @@ class WebAdmin:
                 logger.error(f'Error getting screenshot: {e}')
                 bottle.response.content_type = 'application/json'
                 return json.dumps({'success': False, 'message': str(e)})
+        
+        @self.app.route('/api/click', method='POST')
+        def api_click():
+            bottle.response.content_type = 'application/json'
+            try:
+                # Parse request body
+                data = bottle.request.json
+                if not data:
+                    return json.dumps({'success': False, 'message': 'Invalid request data'})
+                
+                x = data.get('x')
+                y = data.get('y')
+                
+                if x is None or y is None:
+                    return json.dumps({'success': False, 'message': 'Missing coordinates'})
+                
+                # Get helper instance
+                helper = self.helper_getter()
+                
+                # Check device connection
+                device_connected = False
+                if helper is not None:
+                    try:
+                        _ = helper.control
+                        device_connected = True
+                    except Exception:
+                        pass
+                
+                if not device_connected:
+                    try:
+                        from Arknights.configure_launcher import reconnect_helper, get_helper
+                        logger.info('Device not connected, attempting to reconnect...')
+                        reconnect_helper()
+                        helper = get_helper()
+                        
+                        try:
+                            _ = helper.control
+                            logger.info('Successfully reconnected to device')
+                        except Exception:
+                            return json.dumps({'success': False, 'message': 'No device connected'})
+                    except Exception as reconnect_error:
+                        logger.error(f'Failed to reconnect: {reconnect_error}')
+                        return json.dumps({'success': False, 'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
+                
+                # Perform the click
+                logger.info(f'Simulating click at ({x}, {y})')
+                helper.control.input.touch_tap(int(x), int(y))
+                
+                return json.dumps({
+                    'success': True,
+                    'message': f'Clicked at ({x}, {y})'
+                })
+            except Exception as e:
+                logger.error(f'Error simulating click: {e}')
+                return json.dumps({'success': False, 'message': str(e)})
     
     def _get_status(self):
         """Get current status of scheduler and emulator"""
@@ -313,6 +368,7 @@ class WebAdmin:
         .screenshot-container {
             text-align: center;
             margin-top: 20px;
+            position: relative;
         }
         
         .screenshot-container img {
@@ -320,6 +376,48 @@ class WebAdmin:
             height: auto;
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            cursor: crosshair;
+        }
+        
+        .click-indicator {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #10b981;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: clickPulse 0.6s ease-out;
+            transform: translate(-50%, -50%);
+        }
+        
+        @keyframes clickPulse {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0.5);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(2);
+            }
+        }
+        
+        .coordinate-display {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .screenshot-container:hover .coordinate-display {
+            opacity: 1;
         }
         
         .loading {
@@ -407,25 +505,6 @@ class WebAdmin:
             <div id="message-container"></div>
             <div class="btn-group">
                 <button class="btn-primary" onclick="triggerTask()">🚀 立即执行任务</button>
-                <button class="btn-success" onclick="startEmulator()">▶️ 启动模拟器</button>
-                <button class="btn-danger" onclick="stopEmulator()">⏹️ 关闭模拟器</button>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h2>屏幕截图</h2>
-            <div class="screenshot-container">
-                <img id="screenshot" src="" alt="点击下方按钮刷新截图" style="display:none;">
-                <div id="screenshot-loading" class="loading">点击下方按钮刷新截图</div>
-            </div>
-            <div class="btn-group" style="margin-top: 15px;">
-                <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        function showMessage(text, type = 'success') {
             const container = document.getElementById('message-container');
             const message = document.createElement('div');
             message.className = `message ${type}`;
@@ -537,6 +616,11 @@ class WebAdmin:
                     img.src = data.image;
                     img.style.display = 'block';
                     loading.style.display = 'none';
+                    
+                    // Store actual screenshot size for coordinate mapping
+                    img.dataset.actualWidth = data.size[0];
+                    img.dataset.actualHeight = data.size[1];
+                    
                     showMessage('✓ 截图已刷新', 'success');
                 } else {
                     loading.textContent = '获取截图失败: ' + data.message;
@@ -547,6 +631,72 @@ class WebAdmin:
                 showMessage('✗ 请求失败: ' + error.message, 'error');
             }
         }
+        
+        // Handle screenshot click
+        document.addEventListener('DOMContentLoaded', function() {
+            const screenshotImg = document.getElementById('screenshot');
+            const coordDisplay = document.getElementById('coordinate-display');
+            const screenshotContainer = document.querySelector('.screenshot-container');
+            
+            // Update coordinate display on mouse move
+            screenshotImg.addEventListener('mousemove', function(e) {
+                const rect = screenshotImg.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // Calculate actual device coordinates
+                const scaleX = screenshotImg.dataset.actualWidth / rect.width;
+                const scaleY = screenshotImg.dataset.actualHeight / rect.height;
+                const actualX = Math.round(x * scaleX);
+                const actualY = Math.round(y * scaleY);
+                
+                coordDisplay.textContent = `X: ${actualX}, Y: ${actualY}`;
+            });
+            
+            // Handle click
+            screenshotImg.addEventListener('click', async function(e) {
+                const rect = screenshotImg.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // Calculate actual device coordinates
+                const scaleX = screenshotImg.dataset.actualWidth / rect.width;
+                const scaleY = screenshotImg.dataset.actualHeight / rect.height;
+                const actualX = Math.round(x * scaleX);
+                const actualY = Math.round(y * scaleY);
+                
+                // Show visual feedback
+                const indicator = document.createElement('div');
+                indicator.className = 'click-indicator';
+                indicator.style.left = (e.clientX - screenshotContainer.getBoundingClientRect().left) + 'px';
+                indicator.style.top = (e.clientY - screenshotContainer.getBoundingClientRect().top) + 'px';
+                screenshotContainer.appendChild(indicator);
+                setTimeout(() => indicator.remove(), 600);
+                
+                // Send click to backend
+                try {
+                    const response = await fetch('/api/click', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            x: actualX,
+                            y: actualY
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        showMessage(`✓ 已点击 (${actualX}, ${actualY})`, 'success');
+                    } else {
+                        showMessage('✗ 点击失败: ' + data.message, 'error');
+                    }
+                } catch (error) {
+                    showMessage('✗ 请求失败: ' + error.message, 'error');
+                }
+            });
+        });
         
         // Auto-refresh status every 5 seconds
         setInterval(updateStatus, 5000);
