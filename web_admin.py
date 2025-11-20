@@ -62,9 +62,14 @@ class WebAdmin:
         def api_emulator_start():
             bottle.response.content_type = 'application/json'
             try:
-                from Arknights.addons.contrib.emulator_manager import restart_all
-                # Run in a separate thread to avoid blocking
-                threading.Thread(target=restart_all, daemon=True).start()
+                import os
+                # Only start emulator, don't launch game
+                if os.name == 'nt':
+                    from Arknights.addons.contrib.emulator_manager import start_bluestacks
+                    threading.Thread(target=start_bluestacks, daemon=True).start()
+                else:
+                    from Arknights.addons.contrib.emulator_manager import start_redroid
+                    threading.Thread(target=start_redroid, daemon=True).start()
                 return json.dumps({'success': True, 'message': 'Emulator starting...'})
             except Exception as e:
                 logger.error(f'Error starting emulator: {e}')
