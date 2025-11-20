@@ -469,6 +469,65 @@ class WebAdmin:
             border-left: 4px solid #ef4444;
             display: block;
         }
+        
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        
+        .toggle-switch input:checked + .toggle-slider {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+        
+        .toggle-label {
+            font-weight: 500;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -519,6 +578,13 @@ class WebAdmin:
             </div>
             <div class="btn-group" style="margin-top: 15px;">
                 <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
+                <div class="toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">自动刷新 (3s)</span>
+                </div>
             </div>
         </div>
     </div>
@@ -717,6 +783,27 @@ class WebAdmin:
                 }
             });
         });
+        
+        // Auto-refresh screenshot functionality
+        let autoRefreshInterval = null;
+        
+        function toggleAutoRefresh() {
+            const toggle = document.getElementById('auto-refresh-toggle');
+            
+            if (toggle.checked) {
+                // Enable auto-refresh
+                refreshScreenshot(); // Refresh immediately
+                autoRefreshInterval = setInterval(refreshScreenshot, 3000); // Then every 3 seconds
+                showMessage('✓ 自动刷新已启用 (每3秒)', 'success');
+            } else {
+                // Disable auto-refresh
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+                showMessage('✓ 自动刷新已关闭', 'success');
+            }
+        }
         
         // Auto-refresh status every 5 seconds
         setInterval(updateStatus, 5000);
