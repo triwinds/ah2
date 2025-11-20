@@ -15,7 +15,7 @@ class WebAdmin:
     def __init__(self, scheduler, helper_getter, port=8888):
         """
         Initialize WebAdmin
-        
+
         Args:
             scheduler: APScheduler instance
             helper_getter: Callable that returns the current helper instance
@@ -27,22 +27,22 @@ class WebAdmin:
         self.app = bottle.Bottle()
         self.server_thread = None
         self.is_running = False
-        
+
         # Setup routes
         self._setup_routes()
-    
+
     def _setup_routes(self):
         """Setup all web routes"""
-        
+
         @self.app.route('/')
         def index():
             return self._get_dashboard_html()
-        
+
         @self.app.route('/api/status')
         def api_status():
             bottle.response.content_type = 'application/json'
             return json.dumps(self._get_status())
-        
+
         @self.app.route('/api/trigger', method='POST')
         def api_trigger():
             bottle.response.content_type = 'application/json'
@@ -57,7 +57,7 @@ class WebAdmin:
             except Exception as e:
                 logger.error(f'Error triggering task: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
-        
+
         @self.app.route('/api/emulator/start', method='POST')
         def api_emulator_start():
             bottle.response.content_type = 'application/json'
@@ -74,7 +74,7 @@ class WebAdmin:
             except Exception as e:
                 logger.error(f'Error starting emulator: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
-        
+
         @self.app.route('/api/emulator/stop', method='POST')
         def api_emulator_stop():
             bottle.response.content_type = 'application/json'
@@ -85,24 +85,24 @@ class WebAdmin:
             except Exception as e:
                 logger.error(f'Error stopping emulator: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
-        
+
         @self.app.route('/api/screenshot')
         def api_screenshot():
             try:
                 helper = self.helper_getter()
-                
+
                 # Check if device is already connected
                 device_connected = False
                 if helper is not None and hasattr(helper, '_controller') and helper._controller is not None:
                     device_connected = True
-                
+
                 if not device_connected:
                     try:
                         from Arknights.configure_launcher import reconnect_helper, get_helper
                         logger.info('Device not connected, attempting to reconnect...')
                         reconnect_helper()
                         helper = get_helper()
-                        
+
                         # Verify reconnection succeeded
                         try:
                             _ = helper.control
@@ -113,16 +113,17 @@ class WebAdmin:
                     except Exception as reconnect_error:
                         logger.error(f'Failed to reconnect: {reconnect_error}')
                         bottle.response.content_type = 'application/json'
-                        return json.dumps({'success': False, 'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
-                
+                        return json.dumps({'success': False,
+                                           'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
+
                 # Get screenshot from controller
                 screenshot = helper.control.screenshot()
-                
+
                 # Convert PIL image to base64
                 buffered = BytesIO()
                 screenshot.save(buffered, format="PNG")
                 img_str = base64.b64encode(buffered.getvalue()).decode()
-                
+
                 bottle.response.content_type = 'application/json'
                 return json.dumps({
                     'success': True,
@@ -133,7 +134,7 @@ class WebAdmin:
                 logger.error(f'Error getting screenshot: {e}')
                 bottle.response.content_type = 'application/json'
                 return json.dumps({'success': False, 'message': str(e)})
-        
+
         @self.app.route('/api/click', method='POST')
         def api_click():
             bottle.response.content_type = 'application/json'
@@ -142,28 +143,28 @@ class WebAdmin:
                 data = bottle.request.json
                 if not data:
                     return json.dumps({'success': False, 'message': 'Invalid request data'})
-                
+
                 x = data.get('x')
                 y = data.get('y')
-                
+
                 if x is None or y is None:
                     return json.dumps({'success': False, 'message': 'Missing coordinates'})
-                
+
                 # Get helper instance
                 helper = self.helper_getter()
-                
+
                 # Check device connection
                 device_connected = False
                 if helper is not None and hasattr(helper, '_controller') and helper._controller is not None:
                     device_connected = True
-                
+
                 if not device_connected:
                     try:
                         from Arknights.configure_launcher import reconnect_helper, get_helper
                         logger.info('Device not connected, attempting to reconnect...')
                         reconnect_helper()
                         helper = get_helper()
-                        
+
                         try:
                             _ = helper.control
                             logger.info('Successfully reconnected to device')
@@ -171,12 +172,13 @@ class WebAdmin:
                             return json.dumps({'success': False, 'message': 'No device connected'})
                     except Exception as reconnect_error:
                         logger.error(f'Failed to reconnect: {reconnect_error}')
-                        return json.dumps({'success': False, 'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
-                
+                        return json.dumps({'success': False,
+                                           'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
+
                 # Perform the click
                 logger.info(f'Simulating click at ({x}, {y})')
                 helper.control.input.touch_tap(int(x), int(y))
-                
+
                 return json.dumps({
                     'success': True,
                     'message': f'Clicked at ({x}, {y})'
@@ -184,14 +186,14 @@ class WebAdmin:
             except Exception as e:
                 logger.error(f'Error simulating click: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
-    
+
     def _get_status(self):
         """Get current status of scheduler and emulator"""
         status = {
             'scheduler_running': self.scheduler.running,
             'jobs': []
         }
-        
+
         # Get job information
         for job in self.scheduler.get_jobs():
             status['jobs'].append({
@@ -200,7 +202,7 @@ class WebAdmin:
                 'next_run': job.next_run_time.isoformat() if job.next_run_time else None,
                 'trigger': str(job.trigger)
             })
-        
+
         # Check emulator status
         try:
             from Arknights.addons.contrib.emulator_manager import check_emulator_is_alive
@@ -208,7 +210,7 @@ class WebAdmin:
         except Exception as e:
             logger.error(f'Error checking emulator status: {e}')
             status['emulator_alive'] = False
-        
+
         # Check helper/device status
         try:
             helper = self.helper_getter()
@@ -219,9 +221,9 @@ class WebAdmin:
         except Exception as e:
             logger.error(f'Error checking device status: {e}')
             status['device_connected'] = False
-        
+
         return status
-    
+
     def _get_dashboard_html(self):
         """Return the dashboard HTML"""
         return """
@@ -237,19 +239,19 @@ class WebAdmin:
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
-        
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
         }
-        
+
         h1 {
             color: white;
             text-align: center;
@@ -257,7 +259,7 @@ class WebAdmin:
             font-size: 2.5em;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
-        
+
         .card {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 15px;
@@ -266,7 +268,7 @@ class WebAdmin:
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             backdrop-filter: blur(10px);
         }
-        
+
         .card h2 {
             color: #667eea;
             margin-bottom: 15px;
@@ -274,47 +276,47 @@ class WebAdmin:
             border-bottom: 2px solid #667eea;
             padding-bottom: 10px;
         }
-        
+
         .status-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
             margin-bottom: 20px;
         }
-        
+
         .status-item {
             padding: 15px;
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             border-radius: 10px;
             border-left: 4px solid #667eea;
         }
-        
+
         .status-label {
             font-size: 0.9em;
             color: #666;
             margin-bottom: 5px;
         }
-        
+
         .status-value {
             font-size: 1.2em;
             font-weight: bold;
             color: #333;
         }
-        
+
         .status-online {
             color: #10b981;
         }
-        
+
         .status-offline {
             color: #ef4444;
         }
-        
+
         .btn-group {
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
         }
-        
+
         button {
             flex: 1;
             min-width: 150px;
@@ -327,37 +329,37 @@ class WebAdmin:
             transition: all 0.3s ease;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-        
+
         button:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         }
-        
+
         button:active {
             transform: translateY(0);
         }
-        
+
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        
+
         .btn-success {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
         }
-        
+
         .btn-danger {
             background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
             color: white;
         }
-        
+
         .screenshot-container {
             text-align: center;
             margin-top: 20px;
             position: relative;
         }
-        
+
         .screenshot-container img {
             max-width: 100%;
             height: auto;
@@ -365,7 +367,7 @@ class WebAdmin:
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             cursor: crosshair;
         }
-        
+
         .click-indicator {
             position: absolute;
             width: 30px;
@@ -376,7 +378,7 @@ class WebAdmin:
             animation: clickPulse 0.6s ease-out;
             transform: translate(-50%, -50%);
         }
-        
+
         @keyframes clickPulse {
             0% {
                 opacity: 1;
@@ -387,7 +389,7 @@ class WebAdmin:
                 transform: translate(-50%, -50%) scale(2);
             }
         }
-        
+
         .coordinate-display {
             position: absolute;
             bottom: 10px;
@@ -402,17 +404,17 @@ class WebAdmin:
             opacity: 0;
             transition: opacity 0.3s;
         }
-        
+
         .screenshot-container:hover .coordinate-display {
             opacity: 1;
         }
-        
+
         .loading {
             text-align: center;
             padding: 20px;
             color: #666;
         }
-        
+
         .loading-indicator {
             text-align: center;
             padding: 10px;
@@ -420,11 +422,11 @@ class WebAdmin:
             font-weight: 500;
             display: none;
         }
-        
+
         .jobs-list {
             list-style: none;
         }
-        
+
         .job-item {
             padding: 10px;
             margin: 5px 0;
@@ -432,39 +434,39 @@ class WebAdmin:
             border-radius: 5px;
             border-left: 3px solid #667eea;
         }
-        
+
         .job-name {
             font-weight: bold;
             color: #333;
         }
-        
+
         .job-next-run {
             font-size: 0.9em;
             color: #666;
             margin-top: 5px;
         }
-        
+
         .message {
             padding: 12px;
             margin: 10px 0;
             border-radius: 8px;
             display: none;
         }
-        
+
         .message.success {
             background: #d1fae5;
             color: #065f46;
             border-left: 4px solid #10b981;
             display: block;
         }
-        
+
         .message.error {
             background: #fee2e2;
             color: #991b1b;
             border-left: 4px solid #ef4444;
             display: block;
         }
-        
+
         .toggle-container {
             display: flex;
             align-items: center;
@@ -473,20 +475,20 @@ class WebAdmin:
             background: #f8f9fa;
             border-radius: 8px;
         }
-        
+
         .toggle-switch {
             position: relative;
             display: inline-block;
             width: 50px;
             height: 26px;
         }
-        
+
         .toggle-switch input {
             opacity: 0;
             width: 0;
             height: 0;
         }
-        
+
         .toggle-slider {
             position: absolute;
             cursor: pointer;
@@ -498,7 +500,7 @@ class WebAdmin:
             transition: 0.3s;
             border-radius: 26px;
         }
-        
+
         .toggle-slider:before {
             position: absolute;
             content: "";
@@ -510,15 +512,15 @@ class WebAdmin:
             transition: 0.3s;
             border-radius: 50%;
         }
-        
+
         .toggle-switch input:checked + .toggle-slider {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        
+
         .toggle-switch input:checked + .toggle-slider:before {
             transform: translateX(24px);
         }
-        
+
         .toggle-label {
             font-weight: 500;
             color: #333;
@@ -528,7 +530,7 @@ class WebAdmin:
 <body>
     <div class="container">
         <h1>🎮 Linux Schedule Manager</h1>
-        
+
         <div class="card">
             <h2>系统状态</h2>
             <div class="status-grid">
@@ -545,7 +547,7 @@ class WebAdmin:
                     <div class="status-value" id="device-status">加载中...</div>
                 </div>
             </div>
-            
+
             <div id="jobs-container">
                 <h3>计划任务</h3>
                 <ul class="jobs-list" id="jobs-list">
@@ -553,7 +555,7 @@ class WebAdmin:
                 </ul>
             </div>
         </div>
-        
+
         <div class="card">
             <h2>控制面板</h2>
             <div class="btn-group">
@@ -562,16 +564,10 @@ class WebAdmin:
                 <button class="btn-danger" onclick="stopEmulator()">⏹️ 关闭模拟器</button>
             </div>
         </div>
-        
+
         <div class="card">
             <h2>屏幕截图</h2>
-            <div class="screenshot-container">
-                <img id="screenshot" src="" alt="点击下方按钮刷新截图" style="display:none;">
-                <div id="screenshot-loading" class="loading">点击下方按钮刷新截图</div>
-                <div id="coordinate-display" class="coordinate-display">X: 0, Y: 0</div>
-            </div>
-            <div id="loading-indicator" class="loading-indicator">🔄 加载中...</div>
-            <div class="btn-group" style="margin-top: 15px;">
+            <div class="btn-group" style="margin-bottom: 15px;">
                 <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
                 <div class="toggle-container">
                     <label class="toggle-switch">
@@ -581,10 +577,16 @@ class WebAdmin:
                     <span class="toggle-label">自动刷新 (3s)</span>
                 </div>
             </div>
+            <div id="loading-indicator" class="loading-indicator">🔄 加载中...</div>
+            <div class="screenshot-container">
+                <img id="screenshot" src="" alt="点击上方按钮刷新截图" style="display:none;">
+                <div id="screenshot-loading" class="loading">点击上方按钮刷新截图</div>
+                <div id="coordinate-display" class="coordinate-display">X: 0, Y: 0</div>
+            </div>
             <div id="message-container"></div>
         </div>
     </div>
-    
+
     <script>
         function showMessage(text, type = 'success') {
             const container = document.getElementById('message-container');
@@ -594,30 +596,30 @@ class WebAdmin:
             container.appendChild(message);
             setTimeout(() => message.remove(), 5000);
         }
-        
+
         async function updateStatus() {
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
-                
+
                 // Update scheduler status
                 document.getElementById('scheduler-status').innerHTML = 
                     data.scheduler_running 
                     ? '<span class="status-online">运行中 ✓</span>' 
                     : '<span class="status-offline">已停止 ✗</span>';
-                
+
                 // Update emulator status
                 document.getElementById('emulator-status').innerHTML = 
                     data.emulator_alive 
                     ? '<span class="status-online">在线 ✓</span>' 
                     : '<span class="status-offline">离线 ✗</span>';
-                
+
                 // Update device status
                 document.getElementById('device-status').innerHTML = 
                     data.device_connected 
                     ? '<span class="status-online">已连接 ✓</span>' 
                     : '<span class="status-offline">未连接 ✗</span>';
-                
+
                 // Update jobs list
                 const jobsList = document.getElementById('jobs-list');
                 if (data.jobs && data.jobs.length > 0) {
@@ -636,7 +638,7 @@ class WebAdmin:
                 console.error('Error updating status:', error);
             }
         }
-        
+
         async function triggerTask() {
             try {
                 const response = await fetch('/api/trigger', { method: 'POST' });
@@ -651,7 +653,7 @@ class WebAdmin:
                 showMessage('✗ 请求失败: ' + error.message, 'error');
             }
         }
-        
+
         async function startEmulator() {
             try {
                 const response = await fetch('/api/emulator/start', { method: 'POST' });
@@ -666,7 +668,7 @@ class WebAdmin:
                 showMessage('✗ 请求失败: ' + error.message, 'error');
             }
         }
-        
+
         async function stopEmulator() {
             try {
                 const response = await fetch('/api/emulator/stop', { method: 'POST' });
@@ -681,87 +683,87 @@ class WebAdmin:
                 showMessage('✗ 请求失败: ' + error.message, 'error');
             }
         }
-        
+
         async function refreshScreenshot() {
             const img = document.getElementById('screenshot');
             const loading = document.getElementById('screenshot-loading');
             const loadingIndicator = document.getElementById('loading-indicator');
-            
+
             // Show loading indicator below the image, don't hide the current image
             loadingIndicator.style.display = 'block';
-            
+
             try {
                 const response = await fetch('/api/screenshot');
                 const data = await response.json();
-                
+
                 if (data.success) {
                     img.src = data.image;
                     img.style.display = 'block';
                     loading.style.display = 'none';
                     loadingIndicator.style.display = 'none';
-                    
+
                     // Store actual screenshot size for coordinate mapping
                     img.dataset.actualWidth = data.size[0];
                     img.dataset.actualHeight = data.size[1];
-                    
+
                     showMessage('✓ 截图已刷新', 'success');
                 } else {
                     loadingIndicator.style.display = 'none';
-                    
+
                     // Only show error in the main loading area if no image is displayed
                     if (img.style.display === 'none') {
                         loading.textContent = '获取截图失败: ' + data.message;
                         loading.style.display = 'block';
                     }
-                    
+
                     showMessage('✗ ' + data.message, 'error');
                 }
             } catch (error) {
                 loadingIndicator.style.display = 'none';
-                
+
                 // Only show error in the main loading area if no image is displayed
                 if (img.style.display === 'none') {
                     loading.textContent = '请求失败: ' + error.message;
                     loading.style.display = 'block';
                 }
-                
+
                 showMessage('✗ 请求失败: ' + error.message, 'error');
             }
         }
-        
+
         // Handle screenshot click
         document.addEventListener('DOMContentLoaded', function() {
             const screenshotImg = document.getElementById('screenshot');
             const coordDisplay = document.getElementById('coordinate-display');
             const screenshotContainer = document.querySelector('.screenshot-container');
-            
+
             // Update coordinate display on mouse move
             screenshotImg.addEventListener('mousemove', function(e) {
                 const rect = screenshotImg.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
-                
+
                 // Calculate actual device coordinates
                 const scaleX = screenshotImg.dataset.actualWidth / rect.width;
                 const scaleY = screenshotImg.dataset.actualHeight / rect.height;
                 const actualX = Math.round(x * scaleX);
                 const actualY = Math.round(y * scaleY);
-                
+
                 coordDisplay.textContent = `X: ${actualX}, Y: ${actualY}`;
             });
-            
+
             // Handle click
             screenshotImg.addEventListener('click', async function(e) {
                 const rect = screenshotImg.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
-                
+
                 // Calculate actual device coordinates
                 const scaleX = screenshotImg.dataset.actualWidth / rect.width;
                 const scaleY = screenshotImg.dataset.actualHeight / rect.height;
                 const actualX = Math.round(x * scaleX);
                 const actualY = Math.round(y * scaleY);
-                
+
                 // Show visual feedback
                 const indicator = document.createElement('div');
                 indicator.className = 'click-indicator';
@@ -769,7 +771,7 @@ class WebAdmin:
                 indicator.style.top = (e.clientY - screenshotContainer.getBoundingClientRect().top) + 'px';
                 screenshotContainer.appendChild(indicator);
                 setTimeout(() => indicator.remove(), 600);
-                
+
                 // Send click to backend
                 try {
                     const response = await fetch('/api/click', {
@@ -782,7 +784,7 @@ class WebAdmin:
                             y: actualY
                         })
                     });
-                    
+
                     const data = await response.json();
                     if (data.success) {
                         showMessage(`✓ 已点击 (${actualX}, ${actualY})`, 'success');
@@ -794,13 +796,13 @@ class WebAdmin:
                 }
             });
         });
-        
+
         // Auto-refresh screenshot functionality
         let autoRefreshInterval = null;
-        
+
         function toggleAutoRefresh() {
             const toggle = document.getElementById('auto-refresh-toggle');
-            
+
             if (toggle.checked) {
                 // Enable auto-refresh
                 refreshScreenshot(); // Refresh immediately
@@ -815,30 +817,30 @@ class WebAdmin:
                 showMessage('✓ 自动刷新已关闭', 'success');
             }
         }
-        
+
         // Auto-refresh status every 5 seconds
         setInterval(updateStatus, 5000);
-        
+
         // Initial load
         updateStatus();
     </script>
 </body>
 </html>
         """
-    
+
     def start(self):
         """Start the web server in a daemon thread"""
         if self.is_running:
             logger.warning('Web server already running')
             return
-        
+
         def run_server():
             try:
                 logger.info(f'Starting web admin server on port {self.port}')
                 bottle.run(self.app, host='0.0.0.0', port=self.port, quiet=True)
             except Exception as e:
                 logger.error(f'Web server error: {e}')
-        
+
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
         self.is_running = True
