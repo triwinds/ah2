@@ -1,5 +1,6 @@
 import re
 from typing import Optional
+from pathlib import Path
 
 import requests
 import json
@@ -28,6 +29,68 @@ from web_admin import WebAdmin
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None  # Will be initialized in main()
 grab_red_ticket = False
+CONFIG_FILE = Path(__file__).parent / 'config.json'
+
+
+def load_config_from_file():
+    """Load configuration from config.json file"""
+    global grab_red_ticket
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+                if 'sanity_mode' in config_data:
+                    common_config.sanity_mode = config_data['sanity_mode']
+                if 'rouge_like' in config_data:
+                    common_config.rouge_like = config_data['rouge_like']
+                if 'grab_red_ticket' in config_data:
+                    grab_red_ticket = config_data['grab_red_ticket']
+                logger.info(f'Loaded config: sanity_mode={common_config.sanity_mode}, rouge_like={common_config.rouge_like}, grab_red_ticket={grab_red_ticket}')
+        except Exception as e:
+            logger.error(f'Failed to load config file: {e}')
+    else:
+        logger.info('Config file not found, using default config')
+
+
+def save_config_to_file():
+    """Save current configuration to config.json file"""
+    try:
+        config_data = {
+            'sanity_mode': common_config.sanity_mode,
+            'rouge_like': common_config.rouge_like,
+            'grab_red_ticket': grab_red_ticket
+        }
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, indent=2, ensure_ascii=False)
+        logger.info(f'Saved config: {config_data}')
+        return True
+    except Exception as e:
+        logger.error(f'Failed to save config file: {e}')
+        return False
+
+
+def get_current_config():
+    """Get current configuration as a dictionary"""
+    return {
+        'sanity_mode': common_config.sanity_mode,
+        'rouge_like': common_config.rouge_like,
+        'grab_red_ticket': grab_red_ticket
+    }
+
+
+def update_config(sanity_mode=None, rouge_like=None, grab_red_ticket_val=None):
+    """Update configuration and save to file"""
+    global grab_red_ticket
+    if sanity_mode is not None:
+        common_config.sanity_mode = sanity_mode
+        logger.info(f'Updated sanity_mode to: {sanity_mode}')
+    if rouge_like is not None:
+        common_config.rouge_like = rouge_like
+        logger.info(f'Updated rouge_like to: {rouge_like}')
+    if grab_red_ticket_val is not None:
+        grab_red_ticket = grab_red_ticket_val
+        logger.info(f'Updated grab_red_ticket to: {grab_red_ticket_val}')
+    return save_config_to_file()
 
 
 def download_latest_apk():
@@ -73,16 +136,16 @@ def clear_sanity_by_item(only_activity=False):
     # helper.addon(StageNavigator).navigate_and_combat('HE-7', 1000)
     # helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
 
-    if sanity_mode == 'grass':
+    if common_config.sanity_mode == 'grass':
         from Arknights.addons.contrib.grass_on_aog import GrassAddOn
         if not helper.addon(GrassAddOn).run():
             helper.addon(AutoChips).run()
             helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
-    elif sanity_mode == '1-7':
+    elif common_config.sanity_mode == '1-7':
         helper.addon(AutoChips).run()
-        helper.addon(StageNavigator).navigate_and_combat(sanity_mode, 1000)
+        helper.addon(StageNavigator).navigate_and_combat(common_config.sanity_mode, 1000)
     else:
-        helper.addon(StageNavigator).navigate_and_combat(sanity_mode, 1000)
+        helper.addon(StageNavigator).navigate_and_combat(common_config.sanity_mode, 1000)
 
 
 def escape_markdown(
@@ -188,6 +251,9 @@ def main():
     os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
     os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
     
+    # Load configuration from file
+    load_config_from_file()
+    
     # Initialize helper at startup so web admin can use it
     logger.info('Initializing helper...')
     helper = get_helper()
@@ -200,7 +266,10 @@ def main():
     scheduler.add_job(do_works, 'cron', hour='*/4', minute=15, id='do_works')
     
     # Start web admin interface
-    web_admin = WebAdmin(scheduler, get_current_helper, port=8888)
+    def get_config_functions():
+        return (get_current_config, update_config)
+    
+    web_admin = WebAdmin(scheduler, get_current_helper, config_getter=get_config_functions, port=8888)
     web_admin.start()
     logger.info('Web admin started at http://localhost:8888')
     
@@ -208,6 +277,8 @@ def main():
 
 
 if __name__ == '__main__':
+    # Configuration is now managed through common_config and loaded from config.json
+    # sanity_mode = common_config.sanity_mode
     # sanity_mode = input('sanity mode[grass/<stage_code>] default as grass: ')
     # if not sanity_mode:
     #     sanity_mode = common_config.sanity_mode

@@ -12,17 +12,19 @@ logger = logging.getLogger(__name__)
 
 
 class WebAdmin:
-    def __init__(self, scheduler, helper_getter, port=8888):
+    def __init__(self, scheduler, helper_getter, config_getter=None, port=8888):
         """
         Initialize WebAdmin
 
         Args:
             scheduler: APScheduler instance
             helper_getter: Callable that returns the current helper instance
+            config_getter: Callable that returns config management functions (get, update)
             port: Port to run web server on
         """
         self.scheduler = scheduler
         self.helper_getter = helper_getter
+        self.config_getter = config_getter
         self.port = port
         self.app = bottle.Bottle()
         self.server_thread = None
@@ -185,6 +187,63 @@ class WebAdmin:
                 })
             except Exception as e:
                 logger.error(f'Error simulating click: {e}')
+                return json.dumps({'success': False, 'message': str(e)})
+
+        @self.app.route('/api/config', method='GET')
+        def api_get_config():
+            bottle.response.content_type = 'application/json'
+            try:
+                if self.config_getter is None:
+                    return json.dumps({'success': False, 'message': 'Config getter not available'})
+                
+                get_config_func, _ = self.config_getter()
+                config = get_config_func()
+                return json.dumps({
+                    'success': True,
+                    'config': config
+                })
+            except Exception as e:
+                logger.error(f'Error getting config: {e}')
+                return json.dumps({'success': False, 'message': str(e)})
+
+        @self.app.route('/api/config', method='POST')
+        def api_update_config():
+            bottle.response.content_type = 'application/json'
+            try:
+                if self.config_getter is None:
+                    return json.dumps({'success': False, 'message': 'Config getter not available'})
+                
+                # Parse request body
+                data = bottle.request.json
+                if not data:
+                    return json.dumps({'success': False, 'message': 'Invalid request data'})
+
+                _, update_config_func = self.config_getter()
+                
+                # Extract parameters
+                sanity_mode = data.get('sanity_mode')
+                rouge_like = data.get('rouge_like')
+                grab_red_ticket = data.get('grab_red_ticket')
+                
+                # Update config
+                success = update_config_func(
+                    sanity_mode=sanity_mode,
+                    rouge_like=rouge_like,
+                    grab_red_ticket_val=grab_red_ticket
+                )
+                
+                if success:
+                    return json.dumps({
+                        'success': True,
+                        'message': 'Configuration updated successfully'
+                    })
+                else:
+                    return json.dumps({
+                        'success': False,
+                        'message': 'Failed to save configuration'
+                    })
+            except Exception as e:
+                logger.error(f'Error updating config: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
 
     def _get_status(self):
@@ -566,6 +625,49 @@ class WebAdmin:
         </div>
 
         <div class="card">
+            <h2>⚙️ 配置管理</h2>
+            <div id="config-form">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">理智消耗模式 (Sanity Mode)</label>
+                    <select id="sanity-mode-select" style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em;">
+                        <option value="grass">🌾 Grass (自动刷资源)</option>
+                        <option value="1-7">📦 1-7 (固定关卡)</option>
+                        <option value="latest">🆕 Latest (最新活动)</option>
+                        <option value="custom">✏️ 自定义关卡代码</option>
+                    </select>
+                    <input type="text" id="custom-stage-input" placeholder="输入关卡代码，如 HE-7" 
+                           style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em; margin-top: 10px; display: none;">
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div class="toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="rouge-like-toggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label">🎮 启用 MAA 肉鸽模式 (Rouge-like)</span>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <div class="toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="grab-red-ticket-toggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label">🎫 自动获取红票 (Grab Red Ticket)</span>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn-primary" onclick="saveConfig()">💾 保存配置</button>
+                    <button class="btn-success" onclick="loadConfig()">🔄 刷新配置</button>
+                </div>
+            </div>
+            <div id="config-message-container"></div>
+        </div>
+
+        <div class="card">
             <h2>屏幕截图</h2>
             <div class="btn-group" style="margin-bottom: 15px;">
                 <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
@@ -795,6 +897,112 @@ class WebAdmin:
                     showMessage('✗ 请求失败: ' + error.message, 'error');
                 }
             });
+        });
+
+        // Configuration management functions
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+
+                if (data.success) {
+                    const config = data.config;
+                    
+                    // Set sanity mode
+                    const sanityModeSelect = document.getElementById('sanity-mode-select');
+                    const customStageInput = document.getElementById('custom-stage-input');
+                    
+                    const predefinedModes = ['grass', '1-7', 'latest'];
+                    if (predefinedModes.includes(config.sanity_mode)) {
+                        sanityModeSelect.value = config.sanity_mode;
+                        customStageInput.style.display = 'none';
+                    } else {
+                        sanityModeSelect.value = 'custom';
+                        customStageInput.value = config.sanity_mode;
+                        customStageInput.style.display = 'block';
+                    }
+                    
+                    // Set rouge-like
+                    document.getElementById('rouge-like-toggle').checked = config.rouge_like;
+                    
+                    // Set grab red ticket
+                    document.getElementById('grab-red-ticket-toggle').checked = config.grab_red_ticket;
+                    
+                    showConfigMessage('✓ 配置已加载', 'success');
+                } else {
+                    showConfigMessage('✗ 加载配置失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showConfigMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        async function saveConfig() {
+            try {
+                const sanityModeSelect = document.getElementById('sanity-mode-select');
+                const customStageInput = document.getElementById('custom-stage-input');
+                
+                let sanityMode;
+                if (sanityModeSelect.value === 'custom') {
+                    sanityMode = customStageInput.value.trim();
+                    if (!sanityMode) {
+                        showConfigMessage('✗ 请输入自定义关卡代码', 'error');
+                        return;
+                    }
+                } else {
+                    sanityMode = sanityModeSelect.value;
+                }
+                
+                const rougeLike = document.getElementById('rouge-like-toggle').checked;
+                const grabRedTicket = document.getElementById('grab-red-ticket-toggle').checked;
+                
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sanity_mode: sanityMode,
+                        rouge_like: rougeLike,
+                        grab_red_ticket: grabRedTicket
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showConfigMessage('✓ 配置已保存', 'success');
+                } else {
+                    showConfigMessage('✗ 保存失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showConfigMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        function showConfigMessage(text, type = 'success') {
+            const container = document.getElementById('config-message-container');
+            const message = document.createElement('div');
+            message.className = `message ${type}`;
+            message.textContent = text;
+            container.appendChild(message);
+            setTimeout(() => message.remove(), 5000);
+        }
+
+        // Handle sanity mode dropdown change
+        document.addEventListener('DOMContentLoaded', function() {
+            const sanityModeSelect = document.getElementById('sanity-mode-select');
+            const customStageInput = document.getElementById('custom-stage-input');
+            
+            sanityModeSelect.addEventListener('change', function() {
+                if (this.value === 'custom') {
+                    customStageInput.style.display = 'block';
+                } else {
+                    customStageInput.style.display = 'none';
+                }
+            });
+            
+            // Load config on page load
+            loadConfig();
         });
 
         // Auto-refresh screenshot functionality
