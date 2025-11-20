@@ -186,7 +186,7 @@ def get_current_helper():
 def main():
     os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
     os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
-    do_works()
+    # do_works()
     scheduler = BlockingScheduler(timezone='Asia/Shanghai')
     # scheduler.add_job(recruit, 'cron', day_of_week='0,1,2', hour='19', minute=0)
     scheduler.add_job(close_emulator, 'cron', day='*', hour=4, minute=5, id='close_emulator')
@@ -201,17 +201,17 @@ def main():
 
 
 if __name__ == '__main__':
-    sanity_mode = input('sanity mode[grass/<stage_code>] default as grass: ')
-    if not sanity_mode:
-        sanity_mode = common_config.sanity_mode
-    elif sanity_mode == '1':
-        sanity_mode = '1-7'
-    elif sanity_mode == 'g':
-        sanity_mode = 'grass'
-    elif sanity_mode == 'a':
-        grab_red_ticket = True
-        sanity_mode = '1-7'
-    elif sanity_mode == 'l':
-        sanity_mode = 'latest'
+    # sanity_mode = input('sanity mode[grass/<stage_code>] default as grass: ')
+    # if not sanity_mode:
+    #     sanity_mode = common_config.sanity_mode
+    # elif sanity_mode == '1':
+    #     sanity_mode = '1-7'
+    # elif sanity_mode == 'g':
+    #     sanity_mode = 'grass'
+    # elif sanity_mode == 'a':
+    #     grab_red_ticket = True
+    #     sanity_mode = '1-7'
+    # elif sanity_mode == 'l':
+    #     sanity_mode = 'latest'
     main()
     # print(is_in_event())
