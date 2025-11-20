@@ -1,3 +1,4 @@
+from gevent import monkey; monkey.patch_all()
 import re
 from typing import Optional
 from pathlib import Path
