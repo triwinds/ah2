@@ -840,6 +840,7 @@ class WebAdmin:
             const img = document.getElementById('screenshot');
             const loading = document.getElementById('screenshot-loading');
             const loadingIndicator = document.getElementById('loading-indicator');
+            const coordDisplay = document.getElementById('coordinate-display');
 
             // Show loading indicator below the image, don't hide the current image
             loadingIndicator.style.display = 'block';
@@ -847,15 +848,260 @@ class WebAdmin:
             try {
                 const response = await fetch('/api/screenshot');
                 const data = await response.json();
-                    customStageInput.style.display = 'block';
+
+                if (data.success) {
+                    img.src = data.image;
+                    img.style.display = 'block';
+                    loading.style.display = 'none';
+                    loadingIndicator.style.display = 'none';
+
+                    // Store actual screenshot size for coordinate mapping
+                    if (data.size) {
+                        img.dataset.actualWidth = data.size[0];
+                        img.dataset.actualHeight = data.size[1];
+                    }
+
+                    showMessage('✓ 截图已刷新', 'success');
                 } else {
-                    customStageInput.style.display = 'none';
+                    loadingIndicator.style.display = 'none';
+                    // Only show error in the main loading area if no image is displayed
+                    if (img.style.display === 'none') {
+                        loading.textContent = '获取截图失败: ' + data.message;
+                        loading.style.display = 'block';
+                    }
+                    showMessage('✗ ' + data.message, 'error');
                 }
-            });
+            } catch (error) {
+                loadingIndicator.style.display = 'none';
+                if (img.style.display === 'none') {
+                    loading.textContent = '请求失败: ' + error.message;
+                    loading.style.display = 'block';
+                }
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        // Handle screenshot click and coordinates
+        document.addEventListener('DOMContentLoaded', function() {
+            const screenshotImg = document.getElementById('screenshot');
+            const coordDisplay = document.getElementById('coordinate-display');
+            const screenshotContainer = document.querySelector('.screenshot-container');
+
+            if (screenshotImg) {
+                // Update coordinate display on mouse move
+                screenshotImg.addEventListener('mousemove', function(e) {
+                    const rect = screenshotImg.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+
+                    // Calculate actual device coordinates
+                    // Default to 1:1 if actual size not yet loaded
+                    const actualW = parseFloat(screenshotImg.dataset.actualWidth) || rect.width;
+                    const actualH = parseFloat(screenshotImg.dataset.actualHeight) || rect.height;
+                    
+                    const scaleX = actualW / rect.width;
+                    const scaleY = actualH / rect.height;
+                    
+                    const actualX = Math.round(x * scaleX);
+                    const actualY = Math.round(y * scaleY);
+
+                    if (coordDisplay) {
+                        coordDisplay.textContent = `X: ${actualX}, Y: ${actualY}`;
+                    }
+                });
+
+                // Handle click
+                screenshotImg.addEventListener('click', async function(e) {
+                    const rect = screenshotImg.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+
+                    const actualW = parseFloat(screenshotImg.dataset.actualWidth) || rect.width;
+                    const actualH = parseFloat(screenshotImg.dataset.actualHeight) || rect.height;
+
+                    const scaleX = actualW / rect.width;
+                    const scaleY = actualH / rect.height;
+                    
+                    const actualX = Math.round(x * scaleX);
+                    const actualY = Math.round(y * scaleY);
+
+                    // Show visual feedback
+                    const indicator = document.createElement('div');
+                    indicator.className = 'click-indicator';
+                    indicator.style.left = (e.clientX - screenshotContainer.getBoundingClientRect().left) + 'px';
+                    indicator.style.top = (e.clientY - screenshotContainer.getBoundingClientRect().top) + 'px';
+                    screenshotContainer.appendChild(indicator);
+                    setTimeout(() => indicator.remove(), 600);
+
+                    // Send click to backend
+                    try {
+                        const response = await fetch('/api/click', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                x: actualX,
+                                y: actualY
+                            })
+                        });
+
+                        const data = await response.json();
+                        if (data.success) {
+                            showMessage(`✓ 已点击 (${actualX}, ${actualY})`, 'success');
+                        } else {
+                            showMessage('✗ 点击失败: ' + data.message, 'error');
+                        }
+                    } catch (error) {
+                        showMessage('✗ 请求失败: ' + error.message, 'error');
+                    }
+                });
+            }
             
-            // Load config on page load
+            // Handle sanity mode dropdown change
+            const sanityModeSelect = document.getElementById('sanity-mode-select');
+            const customStageInput = document.getElementById('custom-stage-input');
+            
+            if (sanityModeSelect && customStageInput) {
+                sanityModeSelect.addEventListener('change', function() {
+                    if (this.value === 'custom') {
+                        customStageInput.style.display = 'block';
+                    } else {
+                        customStageInput.style.display = 'none';
+                    }
+                });
+            }
+
+            // Initial load
             loadConfig();
+            loadMaaTasks();
         });
+
+        // Configuration management functions
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+
+                if (data.success) {
+                    const config = data.config;
+                    
+                    // Set sanity mode
+                    const sanityModeSelect = document.getElementById('sanity-mode-select');
+                    const customStageInput = document.getElementById('custom-stage-input');
+                    
+                    const predefinedModes = ['grass', '1-7', 'latest'];
+                    if (predefinedModes.includes(config.sanity_mode)) {
+                        sanityModeSelect.value = config.sanity_mode;
+                        customStageInput.style.display = 'none';
+                    } else {
+                        sanityModeSelect.value = 'custom';
+                        customStageInput.value = config.sanity_mode;
+                        customStageInput.style.display = 'block';
+                    }
+                    
+                    // Set rouge-like
+                    document.getElementById('rouge-like-toggle').checked = config.rouge_like;
+                    
+                    // Set grab red ticket
+                    document.getElementById('grab-red-ticket-toggle').checked = config.grab_red_ticket;
+                    
+                    showMessage('✓ 配置已加载', 'success');
+                } else {
+                    showMessage('✗ 加载配置失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading config:', error);
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        async function saveConfig() {
+            try {
+                const sanityModeSelect = document.getElementById('sanity-mode-select');
+                const customStageInput = document.getElementById('custom-stage-input');
+                
+                let sanityMode;
+                if (sanityModeSelect.value === 'custom') {
+                    sanityMode = customStageInput.value.trim();
+                    if (!sanityMode) {
+                        showMessage('✗ 请输入自定义关卡代码', 'error');
+                        return;
+                    }
+                } else {
+                    sanityMode = sanityModeSelect.value;
+                }
+                
+                const rougeLike = document.getElementById('rouge-like-toggle').checked;
+                const grabRedTicket = document.getElementById('grab-red-ticket-toggle').checked;
+                
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sanity_mode: sanityMode,
+                        rouge_like: rougeLike,
+                        grab_red_ticket: grabRedTicket
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('✓ 配置已保存', 'success');
+                } else {
+                    showMessage('✗ 保存失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        // MAA Tasks Functions
+        async function loadMaaTasks() {
+            try {
+                const response = await fetch('/api/maa/tasks?t=' + new Date().getTime());
+                const data = await response.json();
+                
+                if (data.success) {
+                    console.log('Loaded content length:', data.content.length);
+                    document.getElementById('maa-tasks-content').value = data.content;
+                    showMessage('✓ MAA任务配置已加载', 'success');
+                } else {
+                    console.error('Failed to load MAA tasks:', data.message);
+                    showMessage('✗ 加载MAA配置失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading MAA tasks:', error);
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        async function saveMaaTasks() {
+            try {
+                const content = document.getElementById('maa-tasks-content').value;
+                
+                const response = await fetch('/api/maa/tasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content: content })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('✓ MAA任务配置已保存', 'success');
+                } else {
+                    showMessage('✗ 保存MAA配置失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving MAA tasks:', error);
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
 
         // Auto-refresh screenshot functionality
         let autoRefreshInterval = null;
