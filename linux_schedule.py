@@ -26,7 +26,7 @@ from common_config import common_config
 from web_admin import WebAdmin
 
 logger = logging.getLogger(__file__)
-helper: BaseAutomator = None
+helper: BaseAutomator = None  # Will be initialized in main()
 grab_red_ticket = False
 
 
@@ -184,8 +184,15 @@ def get_current_helper():
 
 
 def main():
+    global helper
     os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
     os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
+    
+    # Initialize helper at startup so web admin can use it
+    logger.info('Initializing helper...')
+    helper = get_helper()
+    logger.info('Helper initialized successfully')
+    
     # do_works()
     scheduler = BlockingScheduler(timezone='Asia/Shanghai')
     # scheduler.add_job(recruit, 'cron', day_of_week='0,1,2', hour='19', minute=0)
