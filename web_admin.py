@@ -808,6 +808,29 @@ class WebAdmin:
                 } else {
                     jobsList.innerHTML = '<li class="loading">暂无计划任务</li>';
                 }
+
+            } catch (error) {
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        async function triggerTask() {
+            try {
+                const response = await fetch('/api/trigger', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('✓ 任务已触发', 'success');
+                    updateStatus();
+                } else {
+                    showMessage('✗ 触发失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        async function startEmulator() {
+            try {
                 const response = await fetch('/api/emulator/start', { method: 'POST' });
                 const data = await response.json();
                 if (data.success) {
