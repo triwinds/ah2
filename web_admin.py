@@ -91,15 +91,10 @@ class WebAdmin:
             try:
                 helper = self.helper_getter()
                 
-                # Try to reconnect if helper is None or not connected
+                # Check if device is already connected
                 device_connected = False
-                if helper is not None:
-                    try:
-                        # Try to access control - this will trigger connection check
-                        _ = helper.control
-                        device_connected = True
-                    except Exception:
-                        pass
+                if helper is not None and hasattr(helper, '_controller') and helper._controller is not None:
+                    device_connected = True
                 
                 if not device_connected:
                     try:
@@ -159,12 +154,8 @@ class WebAdmin:
                 
                 # Check device connection
                 device_connected = False
-                if helper is not None:
-                    try:
-                        _ = helper.control
-                        device_connected = True
-                    except Exception:
-                        pass
+                if helper is not None and hasattr(helper, '_controller') and helper._controller is not None:
+                    device_connected = True
                 
                 if not device_connected:
                     try:
@@ -221,12 +212,8 @@ class WebAdmin:
         # Check helper/device status
         try:
             helper = self.helper_getter()
-            if helper is not None:
-                try:
-                    _ = helper.control
-                    status['device_connected'] = True
-                except Exception:
-                    status['device_connected'] = False
+            if helper is not None and hasattr(helper, '_controller') and helper._controller is not None:
+                status['device_connected'] = True
             else:
                 status['device_connected'] = False
         except Exception as e:
