@@ -246,6 +246,62 @@ class WebAdmin:
                 logger.error(f'Error updating config: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
 
+        @self.app.route('/api/maa/tasks', method='GET')
+        def api_get_maa_tasks():
+            bottle.response.content_type = 'application/json'
+            try:
+                import os
+                # Path to my_tasks.toml
+                # Assuming the path relative to the project root or absolute path
+                # Based on user request: Arknights\addons\contrib\maa\cli_config\maa\tasks\my_tasks.toml
+                # We should probably construct this path dynamically or use a fixed path relative to this file
+                
+                # Let's try to find the file relative to this script
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                task_file_path = os.path.join(base_dir, 'Arknights', 'addons', 'contrib', 'maa', 'cli_config', 'maa', 'tasks', 'my_tasks.toml')
+                
+                if not os.path.exists(task_file_path):
+                    return json.dumps({'success': False, 'message': f'File not found: {task_file_path}'})
+                
+                with open(task_file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                return json.dumps({
+                    'success': True,
+                    'content': content
+                })
+            except Exception as e:
+                logger.error(f'Error reading MAA tasks: {e}')
+                return json.dumps({'success': False, 'message': str(e)})
+
+        @self.app.route('/api/maa/tasks', method='POST')
+        def api_update_maa_tasks():
+            bottle.response.content_type = 'application/json'
+            try:
+                import os
+                data = bottle.request.json
+                if not data or 'content' not in data:
+                    return json.dumps({'success': False, 'message': 'Invalid request data'})
+                
+                content = data['content']
+                
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                task_file_path = os.path.join(base_dir, 'Arknights', 'addons', 'contrib', 'maa', 'cli_config', 'maa', 'tasks', 'my_tasks.toml')
+                
+                # Create directory if it doesn't exist (though it should)
+                os.makedirs(os.path.dirname(task_file_path), exist_ok=True)
+                
+                with open(task_file_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                    
+                return json.dumps({
+                    'success': True,
+                    'message': 'MAA tasks configuration saved successfully'
+                })
+            except Exception as e:
+                logger.error(f'Error updating MAA tasks: {e}')
+                return json.dumps({'success': False, 'message': str(e)})
+
     def _get_status(self):
         """Get current status of scheduler and emulator"""
         status = {
@@ -668,6 +724,18 @@ class WebAdmin:
         </div>
 
         <div class="card">
+            <h2>📝 MAA 任务配置</h2>
+            <p style="margin-bottom: 10px; color: #666;">直接编辑 my_tasks.toml 文件内容：</p>
+            <textarea id="maa-tasks-content" spellcheck="false"
+                style="width: 100%; height: 400px; padding: 15px; border: 2px solid #667eea; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; line-height: 1.5; resize: vertical; background: #f8f9fa; color: #333;"></textarea>
+            
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="btn-primary" onclick="saveMaaTasks()">💾 保存 MAA 配置</button>
+                <button class="btn-success" onclick="loadMaaTasks()">🔄 刷新 MAA 配置</button>
+            </div>
+        </div>
+
+        <div class="card">
             <h2>屏幕截图</h2>
             <div class="btn-group" style="margin-bottom: 15px;">
                 <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
@@ -797,204 +865,6 @@ class WebAdmin:
             try {
                 const response = await fetch('/api/screenshot');
                 const data = await response.json();
-
-                if (data.success) {
-                    img.src = data.image;
-                    img.style.display = 'block';
-                    loading.style.display = 'none';
-                    loadingIndicator.style.display = 'none';
-
-                    // Store actual screenshot size for coordinate mapping
-                    img.dataset.actualWidth = data.size[0];
-                    img.dataset.actualHeight = data.size[1];
-
-                    showMessage('✓ 截图已刷新', 'success');
-                } else {
-                    loadingIndicator.style.display = 'none';
-
-                    // Only show error in the main loading area if no image is displayed
-                    if (img.style.display === 'none') {
-                        loading.textContent = '获取截图失败: ' + data.message;
-                        loading.style.display = 'block';
-                    }
-
-                    showMessage('✗ ' + data.message, 'error');
-                }
-            } catch (error) {
-                loadingIndicator.style.display = 'none';
-
-                // Only show error in the main loading area if no image is displayed
-                if (img.style.display === 'none') {
-                    loading.textContent = '请求失败: ' + error.message;
-                    loading.style.display = 'block';
-                }
-
-                showMessage('✗ 请求失败: ' + error.message, 'error');
-            }
-        }
-
-        // Handle screenshot click
-        document.addEventListener('DOMContentLoaded', function() {
-            const screenshotImg = document.getElementById('screenshot');
-            const coordDisplay = document.getElementById('coordinate-display');
-            const screenshotContainer = document.querySelector('.screenshot-container');
-
-            // Update coordinate display on mouse move
-            screenshotImg.addEventListener('mousemove', function(e) {
-                const rect = screenshotImg.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                // Calculate actual device coordinates
-                const scaleX = screenshotImg.dataset.actualWidth / rect.width;
-                const scaleY = screenshotImg.dataset.actualHeight / rect.height;
-                const actualX = Math.round(x * scaleX);
-                const actualY = Math.round(y * scaleY);
-
-                coordDisplay.textContent = `X: ${actualX}, Y: ${actualY}`;
-            });
-
-            // Handle click
-            screenshotImg.addEventListener('click', async function(e) {
-                const rect = screenshotImg.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                // Calculate actual device coordinates
-                const scaleX = screenshotImg.dataset.actualWidth / rect.width;
-                const scaleY = screenshotImg.dataset.actualHeight / rect.height;
-                const actualX = Math.round(x * scaleX);
-                const actualY = Math.round(y * scaleY);
-
-                // Show visual feedback
-                const indicator = document.createElement('div');
-                indicator.className = 'click-indicator';
-                indicator.style.left = (e.clientX - screenshotContainer.getBoundingClientRect().left) + 'px';
-                indicator.style.top = (e.clientY - screenshotContainer.getBoundingClientRect().top) + 'px';
-                screenshotContainer.appendChild(indicator);
-                setTimeout(() => indicator.remove(), 600);
-
-                // Send click to backend
-                try {
-                    const response = await fetch('/api/click', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            x: actualX,
-                            y: actualY
-                        })
-                    });
-
-                    const data = await response.json();
-                    if (data.success) {
-                        showMessage(`✓ 已点击 (${actualX}, ${actualY})`, 'success');
-                    } else {
-                        showMessage('✗ 点击失败: ' + data.message, 'error');
-                    }
-                } catch (error) {
-                    showMessage('✗ 请求失败: ' + error.message, 'error');
-                }
-            });
-        });
-
-        // Configuration management functions
-        async function loadConfig() {
-            try {
-                const response = await fetch('/api/config');
-                const data = await response.json();
-
-                if (data.success) {
-                    const config = data.config;
-                    
-                    // Set sanity mode
-                    const sanityModeSelect = document.getElementById('sanity-mode-select');
-                    const customStageInput = document.getElementById('custom-stage-input');
-                    
-                    const predefinedModes = ['grass', '1-7', 'latest'];
-                    if (predefinedModes.includes(config.sanity_mode)) {
-                        sanityModeSelect.value = config.sanity_mode;
-                        customStageInput.style.display = 'none';
-                    } else {
-                        sanityModeSelect.value = 'custom';
-                        customStageInput.value = config.sanity_mode;
-                        customStageInput.style.display = 'block';
-                    }
-                    
-                    // Set rouge-like
-                    document.getElementById('rouge-like-toggle').checked = config.rouge_like;
-                    
-                    // Set grab red ticket
-                    document.getElementById('grab-red-ticket-toggle').checked = config.grab_red_ticket;
-                    
-                    showConfigMessage('✓ 配置已加载', 'success');
-                } else {
-                    showConfigMessage('✗ 加载配置失败: ' + data.message, 'error');
-                }
-            } catch (error) {
-                showConfigMessage('✗ 请求失败: ' + error.message, 'error');
-            }
-        }
-
-        async function saveConfig() {
-            try {
-                const sanityModeSelect = document.getElementById('sanity-mode-select');
-                const customStageInput = document.getElementById('custom-stage-input');
-                
-                let sanityMode;
-                if (sanityModeSelect.value === 'custom') {
-                    sanityMode = customStageInput.value.trim();
-                    if (!sanityMode) {
-                        showConfigMessage('✗ 请输入自定义关卡代码', 'error');
-                        return;
-                    }
-                } else {
-                    sanityMode = sanityModeSelect.value;
-                }
-                
-                const rougeLike = document.getElementById('rouge-like-toggle').checked;
-                const grabRedTicket = document.getElementById('grab-red-ticket-toggle').checked;
-                
-                const response = await fetch('/api/config', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        sanity_mode: sanityMode,
-                        rouge_like: rougeLike,
-                        grab_red_ticket: grabRedTicket
-                    })
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    showConfigMessage('✓ 配置已保存', 'success');
-                } else {
-                    showConfigMessage('✗ 保存失败: ' + data.message, 'error');
-                }
-            } catch (error) {
-                showConfigMessage('✗ 请求失败: ' + error.message, 'error');
-            }
-        }
-
-        function showConfigMessage(text, type = 'success') {
-            const container = document.getElementById('config-message-container');
-            const message = document.createElement('div');
-            message.className = `message ${type}`;
-            message.textContent = text;
-            container.appendChild(message);
-            setTimeout(() => message.remove(), 5000);
-        }
-
-        // Handle sanity mode dropdown change
-        document.addEventListener('DOMContentLoaded', function() {
-            const sanityModeSelect = document.getElementById('sanity-mode-select');
-            const customStageInput = document.getElementById('custom-stage-input');
-            
-            sanityModeSelect.addEventListener('change', function() {
-                if (this.value === 'custom') {
                     customStageInput.style.display = 'block';
                 } else {
                     customStageInput.style.display = 'none';
