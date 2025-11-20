@@ -556,7 +556,6 @@ class WebAdmin:
         
         <div class="card">
             <h2>控制面板</h2>
-            <div id="message-container"></div>
             <div class="btn-group">
                 <button class="btn-primary" onclick="triggerTask()">🚀 立即执行任务</button>
                 <button class="btn-success" onclick="startEmulator()">▶️ 启动模拟器</button>
@@ -582,6 +581,7 @@ class WebAdmin:
                     <span class="toggle-label">自动刷新 (3s)</span>
                 </div>
             </div>
+            <div id="message-container"></div>
         </div>
     </div>
     
