@@ -413,6 +413,14 @@ class WebAdmin:
             color: #666;
         }
         
+        .loading-indicator {
+            text-align: center;
+            padding: 10px;
+            color: #667eea;
+            font-weight: 500;
+            display: none;
+        }
+        
         .jobs-list {
             list-style: none;
         }
@@ -563,6 +571,7 @@ class WebAdmin:
                 <div id="screenshot-loading" class="loading">点击下方按钮刷新截图</div>
                 <div id="coordinate-display" class="coordinate-display">X: 0, Y: 0</div>
             </div>
+            <div id="loading-indicator" class="loading-indicator">🔄 加载中...</div>
             <div class="btn-group" style="margin-top: 15px;">
                 <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
                 <div class="toggle-container">
@@ -676,10 +685,10 @@ class WebAdmin:
         async function refreshScreenshot() {
             const img = document.getElementById('screenshot');
             const loading = document.getElementById('screenshot-loading');
+            const loadingIndicator = document.getElementById('loading-indicator');
             
-            loading.style.display = 'block';
-            loading.textContent = '加载中...';
-            img.style.display = 'none';
+            // Show loading indicator below the image, don't hide the current image
+            loadingIndicator.style.display = 'block';
             
             try {
                 const response = await fetch('/api/screenshot');
@@ -689,6 +698,7 @@ class WebAdmin:
                     img.src = data.image;
                     img.style.display = 'block';
                     loading.style.display = 'none';
+                    loadingIndicator.style.display = 'none';
                     
                     // Store actual screenshot size for coordinate mapping
                     img.dataset.actualWidth = data.size[0];
@@ -696,11 +706,25 @@ class WebAdmin:
                     
                     showMessage('✓ 截图已刷新', 'success');
                 } else {
-                    loading.textContent = '获取截图失败: ' + data.message;
+                    loadingIndicator.style.display = 'none';
+                    
+                    // Only show error in the main loading area if no image is displayed
+                    if (img.style.display === 'none') {
+                        loading.textContent = '获取截图失败: ' + data.message;
+                        loading.style.display = 'block';
+                    }
+                    
                     showMessage('✗ ' + data.message, 'error');
                 }
             } catch (error) {
-                loading.textContent = '请求失败: ' + error.message;
+                loadingIndicator.style.display = 'none';
+                
+                // Only show error in the main loading area if no image is displayed
+                if (img.style.display === 'none') {
+                    loading.textContent = '请求失败: ' + error.message;
+                    loading.style.display = 'block';
+                }
+                
                 showMessage('✗ 请求失败: ' + error.message, 'error');
             }
         }
