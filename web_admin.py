@@ -121,13 +121,13 @@ class WebAdmin:
 
                 # Convert PIL image to base64
                 buffered = BytesIO()
-                screenshot.save(buffered, format="PNG")
+                screenshot.save(buffered, format="WEBP", quality=85)
                 img_str = base64.b64encode(buffered.getvalue()).decode()
 
                 bottle.response.content_type = 'application/json'
                 return json.dumps({
                     'success': True,
-                    'image': f'data:image/png;base64,{img_str}',
+                    'image': f'data:image/webp;base64,{img_str}',
                     'size': screenshot.size
                 })
             except Exception as e:
