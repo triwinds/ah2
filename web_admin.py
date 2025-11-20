@@ -92,17 +92,27 @@ class WebAdmin:
                 helper = self.helper_getter()
                 
                 # Try to reconnect if helper is None or not connected
-                if helper is None or helper._controller is None:
+                device_connected = False
+                if helper is not None:
+                    try:
+                        # Try to access control - this will trigger connection check
+                        _ = helper.control
+                        device_connected = True
+                    except Exception:
+                        pass
+                
+                if not device_connected:
                     try:
                         from Arknights.configure_launcher import reconnect_helper, get_helper
                         logger.info('Device not connected, attempting to reconnect...')
                         reconnect_helper()
                         helper = get_helper()
                         
-                        # Update the global helper reference if needed
-                        if helper is not None and helper._controller is not None:
+                        # Verify reconnection succeeded
+                        try:
+                            _ = helper.control
                             logger.info('Successfully reconnected to device')
-                        else:
+                        except Exception:
                             bottle.response.content_type = 'application/json'
                             return json.dumps({'success': False, 'message': 'No device connected'})
                     except Exception as reconnect_error:
@@ -111,7 +121,7 @@ class WebAdmin:
                         return json.dumps({'success': False, 'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
                 
                 # Get screenshot from controller
-                screenshot = helper._controller.screenshot()
+                screenshot = helper.control.screenshot()
                 
                 # Convert PIL image to base64
                 buffered = BytesIO()
@@ -156,7 +166,14 @@ class WebAdmin:
         # Check helper/device status
         try:
             helper = self.helper_getter()
-            status['device_connected'] = helper is not None and helper._controller is not None
+            if helper is not None:
+                try:
+                    _ = helper.control
+                    status['device_connected'] = True
+                except Exception:
+                    status['device_connected'] = False
+            else:
+                status['device_connected'] = False
         except Exception as e:
             logger.error(f'Error checking device status: {e}')
             status['device_connected'] = False
