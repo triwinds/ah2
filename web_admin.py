@@ -505,6 +505,26 @@ class WebAdmin:
             <div id="message-container"></div>
             <div class="btn-group">
                 <button class="btn-primary" onclick="triggerTask()">🚀 立即执行任务</button>
+                <button class="btn-success" onclick="startEmulator()">▶️ 启动模拟器</button>
+                <button class="btn-danger" onclick="stopEmulator()">⏹️ 关闭模拟器</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>屏幕截图</h2>
+            <div class="screenshot-container">
+                <img id="screenshot" src="" alt="点击下方按钮刷新截图" style="display:none;">
+                <div id="screenshot-loading" class="loading">点击下方按钮刷新截图</div>
+                <div id="coordinate-display" class="coordinate-display">X: 0, Y: 0</div>
+            </div>
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function showMessage(text, type = 'success') {
             const container = document.getElementById('message-container');
             const message = document.createElement('div');
             message.className = `message ${type}`;
