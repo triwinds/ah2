@@ -90,9 +90,25 @@ class WebAdmin:
         def api_screenshot():
             try:
                 helper = self.helper_getter()
+                
+                # Try to reconnect if helper is None or not connected
                 if helper is None or helper._controller is None:
-                    bottle.response.content_type = 'application/json'
-                    return json.dumps({'success': False, 'message': 'No device connected'})
+                    try:
+                        from Arknights.configure_launcher import reconnect_helper, get_helper
+                        logger.info('Device not connected, attempting to reconnect...')
+                        reconnect_helper()
+                        helper = get_helper()
+                        
+                        # Update the global helper reference if needed
+                        if helper is not None and helper._controller is not None:
+                            logger.info('Successfully reconnected to device')
+                        else:
+                            bottle.response.content_type = 'application/json'
+                            return json.dumps({'success': False, 'message': 'No device connected'})
+                    except Exception as reconnect_error:
+                        logger.error(f'Failed to reconnect: {reconnect_error}')
+                        bottle.response.content_type = 'application/json'
+                        return json.dumps({'success': False, 'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
                 
                 # Get screenshot from controller
                 screenshot = helper._controller.screenshot()
