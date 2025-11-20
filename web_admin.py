@@ -1,14 +1,45 @@
+from gevent import monkey; monkey.patch_all()
 import bottle
+from bottle.ext.websocket import GeventWebSocketServer
+from bottle.ext.websocket import websocket
 import json
 import logging
 import threading
 import time
 import base64
+import collections
 from io import BytesIO
 from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+class MemoryLogHandler(logging.Handler):
+    def __init__(self, capacity=1000):
+        super().__init__()
+        self.capacity = capacity
+        self.buffer = collections.deque(maxlen=capacity)
+        self.sockets = set()
+        self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            self.buffer.append(msg)
+            
+            # Broadcast to connected websockets
+            dead_sockets = set()
+            for ws in self.sockets:
+                try:
+                    ws.send(msg)
+                except Exception:
+                    dead_sockets.add(ws)
+            
+            for ws in dead_sockets:
+                self.sockets.remove(ws)
+        except Exception:
+            self.handleError(record)
 
 
 class WebAdmin:
@@ -30,11 +61,35 @@ class WebAdmin:
         self.server_thread = None
         self.is_running = False
 
+        # Setup logging handler
+        self.log_handler = MemoryLogHandler()
+        logging.getLogger().addHandler(self.log_handler)
+
         # Setup routes
         self._setup_routes()
 
     def _setup_routes(self):
         """Setup all web routes"""
+
+        @self.app.route('/api/logs/ws', apply=[websocket])
+        def api_logs_ws(ws):
+            # Send existing logs
+            for msg in self.log_handler.buffer:
+                try:
+                    ws.send(msg)
+                except Exception:
+                    return
+
+            # Register socket
+            self.log_handler.sockets.add(ws)
+            
+            try:
+                while True:
+                    msg = ws.receive()
+                    if msg is None:
+                        break
+            finally:
+                self.log_handler.sockets.discard(ws)
 
         @self.app.route('/')
         def index():
@@ -740,6 +795,27 @@ class WebAdmin:
         </div>
 
         <div class="card">
+            <h2>🖥️ 系统日志</h2>
+            <div id="log-terminal" style="
+                background-color: #1e1e1e; 
+                color: #d4d4d4; 
+                font-family: 'Consolas', 'Monaco', monospace; 
+                font-size: 13px; 
+                padding: 15px; 
+                border-radius: 8px; 
+                height: 400px; 
+                overflow-y: auto; 
+                white-space: pre-wrap;
+                border: 1px solid #333;
+                box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            "></div>
+            <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <div class="status-label" id="ws-status">⚪ 连接中...</div>
+                <button class="btn-primary" style="max-width: 120px; padding: 8px 16px;" onclick="clearLogs()">🗑️ 清空日志</button>
+            </div>
+        </div>
+
+        <div class="card">
             <h2>屏幕截图</h2>
             <div class="btn-group" style="margin-bottom: 15px;">
                 <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
@@ -1081,6 +1157,75 @@ class WebAdmin:
             }
         }
 
+        // WebSocket Logging
+        let ws = null;
+        const logTerminal = document.getElementById('log-terminal');
+        const wsStatus = document.getElementById('ws-status');
+        let reconnectTimer = null;
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/logs/ws`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                if (wsStatus) wsStatus.innerHTML = '<span class="status-online">🟢 已连接</span>';
+                if (reconnectTimer) {
+                    clearInterval(reconnectTimer);
+                    reconnectTimer = null;
+                }
+            };
+
+            ws.onmessage = function(event) {
+                if (!logTerminal) return;
+                const msg = event.data;
+                const span = document.createElement('span');
+                span.textContent = msg + '\n';
+                
+                // Colorize based on log level
+                if (msg.includes('ERROR')) {
+                    span.style.color = '#f87171';
+                } else if (msg.includes('WARNING')) {
+                    span.style.color = '#facc15';
+                } else if (msg.includes('INFO')) {
+                    span.style.color = '#60a5fa';
+                }
+
+                logTerminal.appendChild(span);
+                
+                // Auto scroll to bottom
+                logTerminal.scrollTop = logTerminal.scrollHeight;
+                
+                // Limit lines to prevent memory issues
+                if (logTerminal.childElementCount > 2000) {
+                    logTerminal.removeChild(logTerminal.firstChild);
+                }
+            };
+
+            ws.onclose = function() {
+                if (wsStatus) wsStatus.innerHTML = '<span class="status-offline">🔴 已断开</span>';
+                if (!reconnectTimer) {
+                    reconnectTimer = setInterval(connectWebSocket, 3000);
+                }
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                ws.close();
+            };
+        }
+
+        function clearLogs() {
+            if (logTerminal) logTerminal.innerHTML = '';
+        }
+
+        // Initialize WebSocket
+        if (document.getElementById('log-terminal')) {
+            connectWebSocket();
+        }
+
+
         // MAA Tasks Functions
         async function loadMaaTasks() {
             try {
@@ -1166,7 +1311,7 @@ class WebAdmin:
         def run_server():
             try:
                 logger.info(f'Starting web admin server on port {self.port}')
-                bottle.run(self.app, host='0.0.0.0', port=self.port, quiet=True)
+                bottle.run(self.app, host='0.0.0.0', port=self.port, server=GeventWebSocketServer, quiet=True)
             except Exception as e:
                 logger.error(f'Web server error: {e}')
 
