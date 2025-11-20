@@ -24,6 +24,9 @@ dependencies = [
     #    "eel>=0.16.0,<0.17",
     "ruamel-yaml>=0.18.10",
     "rapidocr>=2.1.0",
+    "bottle>=0.13.4",
+    "gevent>=25.9.1",
+    "bottle-websocket>=0.2.9",
 ]
 
 [tool.hatch.build.targets.sdist]
