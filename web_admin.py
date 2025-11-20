@@ -260,12 +260,16 @@ class WebAdmin:
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 task_file_path = os.path.join(base_dir, 'Arknights', 'addons', 'contrib', 'maa', 'cli_config', 'maa', 'tasks', 'my_tasks.toml')
                 
+                logger.info(f'Attempting to read MAA tasks from: {task_file_path}')
+                
                 if not os.path.exists(task_file_path):
+                    logger.error(f'File not found: {task_file_path}')
                     return json.dumps({'success': False, 'message': f'File not found: {task_file_path}'})
                 
                 with open(task_file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                     
+                logger.info(f'Successfully read {len(content)} bytes')
                 return json.dumps({
                     'success': True,
                     'content': content
@@ -804,28 +808,6 @@ class WebAdmin:
                 } else {
                     jobsList.innerHTML = '<li class="loading">暂无计划任务</li>';
                 }
-            } catch (error) {
-                console.error('Error updating status:', error);
-            }
-        }
-
-        async function triggerTask() {
-            try {
-                const response = await fetch('/api/trigger', { method: 'POST' });
-                const data = await response.json();
-                if (data.success) {
-                    showMessage('✓ 任务已触发', 'success');
-                    updateStatus();
-                } else {
-                    showMessage('✗ 触发失败: ' + data.message, 'error');
-                }
-            } catch (error) {
-                showMessage('✗ 请求失败: ' + error.message, 'error');
-            }
-        }
-
-        async function startEmulator() {
-            try {
                 const response = await fetch('/api/emulator/start', { method: 'POST' });
                 const data = await response.json();
                 if (data.success) {
