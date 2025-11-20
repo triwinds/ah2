@@ -577,12 +577,12 @@ class WebAdmin:
                     <span class="toggle-label">自动刷新 (3s)</span>
                 </div>
             </div>
-            <div id="loading-indicator" class="loading-indicator">🔄 加载中...</div>
             <div class="screenshot-container">
                 <img id="screenshot" src="" alt="点击上方按钮刷新截图" style="display:none;">
                 <div id="screenshot-loading" class="loading">点击上方按钮刷新截图</div>
                 <div id="coordinate-display" class="coordinate-display">X: 0, Y: 0</div>
             </div>
+            <div id="loading-indicator" class="loading-indicator">🔄 加载中...</div>
             <div id="message-container"></div>
         </div>
     </div>
