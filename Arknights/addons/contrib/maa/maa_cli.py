@@ -89,17 +89,70 @@ def close_all_processes():
 atexit.register(close_all_processes)
 
 
+class LogParser:
+    def __init__(self):
+        self.log_pattern = re.compile(r"^\[(?P<time>[^\]]+)\] \[(?P<level>[^\]]+)\] (?P<message>.*)$")
+        self.valuable_keywords = [
+            "Start", "Completed", "Failed", "Stop",  # Task status
+            "Recruit", "Tags", "Result",  # Recruitment
+            "Fight", "Drops", "Stage",  # Battle
+            "Facility", "Operator",  # Infrastructure
+            "Sanity", "Potion", "Stone" # Sanity
+        ]
+        self.ignore_keywords = [
+            "Screenshot", "Recognized", "Processing", "Wait", "Sleep"
+        ]
+
+    def parse(self, line: str):
+        line = line.strip()
+        if not line:
+            return
+
+        match = self.log_pattern.match(line)
+        if not match:
+            # If line doesn't match standard format, it might be a continuation or non-standard log
+            # We can choose to log it as debug or ignore it if it doesn't look important
+            if any(k in line for k in self.valuable_keywords):
+                 logger.info(f"[MAA] {line}")
+            return
+
+        log_data = match.groupdict()
+        level = log_data['level'].upper()
+        message = log_data['message']
+
+        # Map MAA levels to Python logging levels
+        if level in ['FATAL', 'ERROR']:
+            logger.error(f"[MAA] {message}")
+        elif level == 'WARN':
+            logger.warning(f"[MAA] {message}")
+        elif level == 'INFO':
+            # Filter INFO logs
+            if self._is_valuable(message):
+                logger.info(f"[MAA] {message}")
+        # Debug/Trace are ignored by default unless they contain valuable keywords (unlikely for debug)
+
+    def _is_valuable(self, message: str) -> bool:
+        # Check if message contains any valuable keywords
+        if any(k in message for k in self.valuable_keywords):
+            # Ensure it's not in the ignore list (double check)
+            if not any(k in message for k in self.ignore_keywords):
+                return True
+        return False
+
+
 def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1小时
     p = subprocess.Popen([maa_path, 'run', task_name, '-vvv'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    start_time = time.time()  # Add this line to track start time
+    start_time = time.time()
     processes.append(p)
     sel = selectors.DefaultSelector()
     sel.register(p.stdout, selectors.EVENT_READ)
     sel.register(p.stderr, selectors.EVENT_READ)
-    log_item = ""
+    
+    parser = LogParser()
     summary_flag = False
     summary = ""
     ok = True
+    
     try:
         while ok:
             # 使用超时参数进行select
@@ -108,8 +161,9 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
                 if key.fileobj is p.stdout and (not line or line == ""):
                     ok = False
                     break
+                
                 if key.fileobj is p.stdout:
-                    print("===", line, end='')
+                    # stdout usually contains summary and control info
                     if line.startswith('[INFO]'):
                         continue
                     if line.startswith('Summary'):
@@ -118,16 +172,12 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
                     if summary_flag and not line.startswith('-----------------'):
                         summary += line
                 else:
-                    print("---", line, end='')
-                    if line.startswith('[20'):
-                        handle_log_item(log_item.strip())
-                        log_item = line
-                    else:
-                        log_item += line
+                    # stderr contains the logs
+                    parser.parse(line)
 
             # 检查进程是否超时
             if p.poll() is None:  # 如果进程还在运行
-                if timeout is not None and (time.time() - start_time) > timeout:  # Modified this line
+                if timeout is not None and (time.time() - start_time) > timeout:
                     p.terminate()
                     raise subprocess.TimeoutExpired(p.args, timeout)
     except subprocess.TimeoutExpired:
@@ -142,19 +192,6 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
     if '高级资深干员' in summary:
         send_by_tg_bot('公招出 6 星了!', '公招出 6 星了!')
     return summary.strip()
-
-
-def handle_log_item(log_item: str):
-    if not log_item:
-        return
-    # print("==================================")
-    # print(log_item)
-    # print("==================================")
-    # if 'UnknownSubTaskStart' in log_item:
-    #     data_json = log_item.split('UnknownSubTaskStart: ')[1]
-    #     data = json.loads(data_json)
-    if log_item.endswith('Start'):
-        logger.info(log_item.split(' ] ')[1])
 
 
 def run_all_tasks():

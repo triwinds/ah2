@@ -59,54 +59,69 @@ def old_infrast_task(helper):
                 raise e
 
 
-def do_maa_tasks(queue):
+def do_maa_tasks(queue, log_queue=None):
     from maa_task import do_maa_tasks
-    do_maa_tasks(queue)
+    do_maa_tasks(queue, log_queue)
 
 
 def start_maa_process(helper: BaseAutomator):
     from multiprocessing import Process, Queue
+    import logging.handlers
+    
     retry_count = 0
     while retry_count < 3:
         queue = Queue()
-        proc = Process(target=do_maa_tasks, args=(queue,))
-        proc.start()
-        proc.join(timeout=3600)
-        if proc.is_alive():
-            logger.warning('MAA任务超时，强制终止进程')
-            proc.terminate()  # 先尝试正常终止
-            proc.join(timeout=5)  # 等待5秒
-
-            if proc.is_alive():  # 如果仍然存活
-                proc.kill()  # 强制杀死进程
-                proc.join()
-
-        # 尝试获取结果（带超时保护）
-        maa_result = None
+        log_queue = Queue()
+        
+        # Setup log listener to forward logs from child process to main process logger
+        root_logger = logging.getLogger()
+        listener = logging.handlers.QueueListener(log_queue, *root_logger.handlers)
+        listener.start()
+        
         try:
-            maa_result = queue.get(block=False)  # 非阻塞获取
-        except Exception as e:
-            retry_count += 1
-            maa_result = f'maa 获取结果失败: {str(e)}'
-            logger.warning(f'获取结果失败: {str(e)}')
-        if 'Error' in maa_result:
-            retry_count += 1
-            from util.adb_utils import check_game_is_in_front
-            if not check_game_is_in_front(helper):
-                logger.info('Game is not in front, restart game...')
-                success, message = start_and_login_arknights(helper)
-                if not success:
-                    logger.error(f'Failed to restart game: {message}')
-            else:
-                logger.info('Game is in front, run maa startup...')
-                from Arknights.addons.contrib.maa.maa_cli import maa_startup
-                maa_startup()
-            continue
+            proc = Process(target=do_maa_tasks, args=(queue, log_queue))
+            proc.start()
+            proc.join(timeout=3600)
+            
+            if proc.is_alive():
+                logger.warning('MAA任务超时，强制终止进程')
+                proc.terminate()  # 先尝试正常终止
+                proc.join(timeout=5)  # 等待5秒
 
-        # 清理残留资源
-        if proc.exitcode is None:
-            proc.close()
-        return maa_result
+                if proc.is_alive():  # 如果仍然存活
+                    proc.kill()  # 强制杀死进程
+                    proc.join()
+
+            # 尝试获取结果（带超时保护）
+            maa_result = None
+            try:
+                maa_result = queue.get(block=False)  # 非阻塞获取
+            except Exception as e:
+                retry_count += 1
+                maa_result = f'maa 获取结果失败: {str(e)}'
+                logger.warning(f'获取结果失败: {str(e)}')
+            
+            if isinstance(maa_result, str) and 'Error' in maa_result:
+                retry_count += 1
+                from util.adb_utils import check_game_is_in_front
+                if not check_game_is_in_front(helper):
+                    logger.info('Game is not in front, restart game...')
+                    success, message = start_and_login_arknights(helper)
+                    if not success:
+                        logger.error(f'Failed to restart game: {message}')
+                else:
+                    logger.info('Game is in front, run maa startup...')
+                    from Arknights.addons.contrib.maa.maa_cli import maa_startup
+                    maa_startup()
+                continue
+
+            # 清理残留资源
+            if proc.exitcode is None:
+                proc.close()
+            return maa_result
+            
+        finally:
+            listener.stop()
 
 
 def main():

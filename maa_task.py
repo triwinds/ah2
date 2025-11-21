@@ -3,7 +3,39 @@ from multiprocessing import Queue
 from sys import platform
 
 
-def do_maa_tasks(q: Queue = None):
+import logging
+import logging.handlers
+import sys
+
+class StreamToLogger(object):
+    """
+    Fake file-like stream object that redirects writes to a logger instance.
+    """
+    def __init__(self, logger, log_level=logging.INFO):
+        self.logger = logger
+        self.log_level = log_level
+        self.linebuf = ''
+
+    def write(self, buf):
+        for line in buf.rstrip().splitlines():
+            self.logger.log(self.log_level, line.rstrip())
+
+    def flush(self):
+        pass
+
+def setup_process_logging(log_queue):
+    if log_queue is not None:
+        qh = logging.handlers.QueueHandler(log_queue)
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+        root.addHandler(qh)
+        
+        # Redirect stdout and stderr to logger
+        sys.stdout = StreamToLogger(logging.getLogger('MAA'), logging.INFO)
+        sys.stderr = StreamToLogger(logging.getLogger('MAA'), logging.ERROR)
+
+def do_maa_tasks(q: Queue = None, log_queue: Queue = None):
+    setup_process_logging(log_queue)
     if platform == 'linux':
         maa_cli_tasks(q)
     else:
