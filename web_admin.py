@@ -20,7 +20,9 @@ class MemoryLogHandler(logging.Handler):
         super().__init__()
         self.capacity = capacity
         self.buffer = collections.deque(maxlen=capacity)
+        self.maa_buffer = collections.deque(maxlen=capacity)  # Separate buffer for MAA logs
         self.sockets = set()
+        self.maa_sockets = set()  # Separate sockets for MAA logs
         self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     def emit(self, record):
@@ -42,6 +44,23 @@ class MemoryLogHandler(logging.Handler):
                 self.sockets.remove(ws)
         except Exception:
             self.handleError(record)
+
+    def add_maa_log(self, log_message, log_type='info'):
+        """Add MAA log message to the MAA buffer"""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        formatted_msg = f"{timestamp} - MAA - {log_type.upper()} - {log_message}"
+        self.maa_buffer.append(formatted_msg)
+        
+        # Broadcast to MAA websocket connections
+        dead_sockets = set()
+        for ws in self.maa_sockets:
+            try:
+                ws.send(formatted_msg)
+            except Exception:
+                dead_sockets.add(ws)
+        
+        for ws in dead_sockets:
+            self.maa_sockets.remove(ws)
 
 
 class WebAdmin:
@@ -69,8 +88,99 @@ class WebAdmin:
         logging.getLogger().addHandler(self.log_handler)
         logging.getLogger('geventwebsocket.handler').setLevel(logging.WARNING)
 
+        # Setup MAA log parser
+        self._setup_maa_log_parser()
+        
         # Setup routes
         self._setup_routes()
+
+    def _setup_maa_log_parser(self):
+        """Setup MAA log parser to capture and parse MAA logs"""
+        import re
+        
+        # Monkey patch the run_task function in maa_cli to capture logs
+        try:
+            from Arknights.addons.contrib.maa import maa_cli
+            
+            # Store original function
+            original_run_task = maa_cli.run_task
+            
+            def patched_run_task(task_name: str, timeout: int = 3600):
+                """Patched version of run_task that captures logs"""
+                import subprocess
+                import selectors
+                
+                maa_path = maa_cli.maa_path
+                cmd = [maa_path, 'run', task_name, '-vvv']
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                start_time = time.time()
+                maa_cli.processes.append(p)
+                sel = selectors.DefaultSelector()
+                sel.register(p.stdout, selectors.EVENT_READ)
+                sel.register(p.stderr, selectors.EVENT_READ)
+                log_item = ""
+                summary_flag = False
+                summary = ""
+                ok = True
+                
+                try:
+                    while ok:
+                        for key, mask in sel.select(timeout=1.0):
+                            line = key.fileobj.readline().decode()
+                            if key.fileobj is p.stdout and (not line or line == ""):
+                                ok = False
+                                break
+                            if key.fileobj is p.stdout:
+                                # Capture stdout logs
+                                if line.startswith('[INFO]'):
+                                    continue
+                                if line.startswith('Summary'):
+                                    summary_flag = True
+                                    self.log_handler.add_maa_log(line.strip(), 'info')
+                                    continue
+                                if summary_flag and not line.startswith('-----------------'):
+                                    summary += line
+                                    self.log_handler.add_maa_log(line.strip(), 'info')
+                                else:
+                                    self.log_handler.add_maa_log(line.strip(), 'info')
+                            else:
+                                # Capture stderr logs (MAA detailed logs)
+                                if line.startswith('[20'):
+                                    if log_item.strip():
+                                        self.log_handler.add_maa_log(log_item.strip(), 'debug')
+                                    log_item = line
+                                else:
+                                    log_item += line
+                                self.log_handler.add_maa_log(line.strip(), 'debug')
+                        
+                        if p.poll() is None:
+                            if timeout is not None and (time.time() - start_time) > timeout:
+                                p.terminate()
+                                raise subprocess.TimeoutExpired(p.args, timeout)
+                except subprocess.TimeoutExpired:
+                    logger.error(f"Task {task_name} timed out after {timeout} seconds")
+                    p.terminate()
+                    self.log_handler.add_maa_log(f"Task {task_name} timed out after {timeout} seconds", 'error')
+                    return f"Task timed out after {timeout} seconds"
+                finally:
+                    sel.close()
+                    if p in maa_cli.processes:
+                        maa_cli.processes.remove(p)
+                
+                # Handle special summary processing
+                if '高级资深干员' in summary:
+                    self.log_handler.add_maa_log('公招出 6 星了!', 'info')
+                
+                return summary.strip()
+            
+            # Replace the original function
+            maa_cli.run_task = patched_run_task
+            logger.info("MAA log parser initialized successfully")
+            
+        except ImportError:
+            logger.warning("MAA CLI module not found, log parser not initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize MAA log parser: {e}")
 
     def _setup_routes(self):
         """Setup all web routes"""
@@ -94,6 +204,7 @@ class WebAdmin:
                         break
             finally:
                 self.log_handler.sockets.discard(ws)
+
 
         @self.app.route('/')
         def index():

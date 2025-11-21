@@ -400,15 +400,21 @@
 
         <div class="card">
             <h2>🖥️ 系统日志</h2>
+            <div style="margin-bottom: 15px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button class="btn-primary" id="system-log-tab" onclick="switchLogTab('system')" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">系统日志</button>
+                    <button class="btn-primary" id="maa-log-tab" onclick="switchLogTab('maa')" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">MAA 日志</button>
+                </div>
+            </div>
             <div id="log-terminal" style="
-                background-color: #1e1e1e; 
-                color: #d4d4d4; 
-                font-family: 'Consolas', 'Monaco', monospace; 
-                font-size: 13px; 
-                padding: 15px; 
-                border-radius: 8px; 
-                height: 400px; 
-                overflow-y: auto; 
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 13px;
+                padding: 15px;
+                border-radius: 8px;
+                height: 400px;
+                overflow-y: auto;
                 white-space: pre-wrap;
                 border: 1px solid #333;
                 box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
@@ -778,6 +784,27 @@
         const logTerminal = document.getElementById('log-terminal');
         const wsStatus = document.getElementById('ws-status');
         let reconnectTimer = null;
+        let currentLogType = 'system'; // 'system' or 'maa'
+        let allLogs = []; // Store all logs to filter on client side
+
+        function switchLogTab(type) {
+            currentLogType = type;
+            
+            // Update tab styles
+            const systemTab = document.getElementById('system-log-tab');
+            const maaTab = document.getElementById('maa-log-tab');
+            
+            if (type === 'system') {
+                systemTab.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                maaTab.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
+            } else {
+                systemTab.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
+                maaTab.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+            }
+            
+            // Filter and display logs based on type
+            displayFilteredLogs();
+        }
 
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -796,27 +823,21 @@
             ws.onmessage = function (event) {
                 if (!logTerminal) return;
                 const msg = event.data;
-                const span = document.createElement('span');
-                span.textContent = msg + '\n';
-
-                // Colorize based on log level
-                if (msg.includes('ERROR')) {
-                    span.style.color = '#f87171';
-                } else if (msg.includes('WARNING')) {
-                    span.style.color = '#facc15';
-                } else if (msg.includes('INFO')) {
-                    span.style.color = '#60a5fa';
+                
+                // Store all logs
+                allLogs.push({
+                    message: msg,
+                    timestamp: Date.now(),
+                    type: msg.includes('MAA -') ? 'maa' : 'system'
+                });
+                
+                // Keep only recent logs to prevent memory issues
+                if (allLogs.length > 5000) {
+                    allLogs = allLogs.slice(-3000);
                 }
-
-                logTerminal.appendChild(span);
-
-                // Auto scroll to bottom
-                logTerminal.scrollTop = logTerminal.scrollHeight;
-
-                // Limit lines to prevent memory issues
-                if (logTerminal.childElementCount > 2000) {
-                    logTerminal.removeChild(logTerminal.firstChild);
-                }
+                
+                // Display filtered logs
+                displayFilteredLogs();
             };
 
             ws.onclose = function () {
@@ -832,8 +853,46 @@
             };
         }
 
+        function displayFilteredLogs() {
+            if (!logTerminal) return;
+            
+            // Clear terminal
+            logTerminal.innerHTML = '';
+            
+            // Filter and display logs based on current type
+            const filteredLogs = allLogs.filter(log =>
+                currentLogType === 'system' ? log.type === 'system' : log.type === 'maa'
+            );
+            
+            // Display logs
+            filteredLogs.forEach(log => {
+                appendLogMessage(log.message, log.type);
+            });
+        }
+
+        function appendLogMessage(msg, type) {
+            const span = document.createElement('span');
+            span.textContent = msg + '\n';
+
+            // Colorize based on log level and type
+            if (msg.includes('ERROR')) {
+                span.style.color = '#f87171';
+            } else if (msg.includes('WARNING')) {
+                span.style.color = '#facc15';
+            } else if (msg.includes('INFO')) {
+                span.style.color = type === 'maa' ? '#10b981' : '#60a5fa';  // Green for MAA, blue for system
+            } else if (msg.includes('DEBUG') || msg.includes('TRC')) {
+                span.style.color = '#9ca3af';  // Gray for debug/trace
+            }
+
+            logTerminal.appendChild(span);
+        }
+
         function clearLogs() {
-            if (logTerminal) logTerminal.innerHTML = '';
+            if (logTerminal) {
+                logTerminal.innerHTML = '';
+                allLogs = [];
+            }
         }
 
         // Initialize WebSocket
