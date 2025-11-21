@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -28,7 +29,7 @@
             text-align: center;
             margin-bottom: 30px;
             font-size: 2.5em;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .card {
@@ -155,6 +156,7 @@
                 opacity: 1;
                 transform: translate(-50%, -50%) scale(0.5);
             }
+
             100% {
                 opacity: 0;
                 transform: translate(-50%, -50%) scale(2);
@@ -284,11 +286,11 @@
             border-radius: 50%;
         }
 
-        .toggle-switch input:checked + .toggle-slider {
+        .toggle-switch input:checked+.toggle-slider {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
 
-        .toggle-switch input:checked + .toggle-slider:before {
+        .toggle-switch input:checked+.toggle-slider:before {
             transform: translateX(24px);
         }
 
@@ -298,6 +300,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <h1>🎮 Linux Schedule Manager</h1>
@@ -340,15 +343,17 @@
             <h2>⚙️ 配置管理</h2>
             <div id="config-form">
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">理智消耗模式 (Sanity Mode)</label>
-                    <select id="sanity-mode-select" style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">理智消耗模式 (Sanity
+                        Mode)</label>
+                    <select id="sanity-mode-select"
+                        style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em;">
                         <option value="grass">🌾 Grass (自动刷资源)</option>
                         <option value="1-7">📦 1-7 (固定关卡)</option>
                         <option value="latest">🆕 Latest (最新活动)</option>
                         <option value="custom">✏️ 自定义关卡代码</option>
                     </select>
-                    <input type="text" id="custom-stage-input" placeholder="输入关卡代码，如 HE-7" 
-                           style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em; margin-top: 10px; display: none;">
+                    <input type="text" id="custom-stage-input" placeholder="输入关卡代码，如 HE-7"
+                        style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em; margin-top: 10px; display: none;">
                 </div>
 
                 <div style="margin-bottom: 20px;">
@@ -374,17 +379,19 @@
                 <div class="btn-group">
                     <button class="btn-primary" onclick="saveConfig()">💾 保存配置</button>
                     <button class="btn-success" onclick="loadConfig()">🔄 刷新配置</button>
+                    <button class="btn-primary" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
+                        onclick="toggleMaaConfig()">🛠️ MAA 配置</button>
                 </div>
             </div>
             <div id="config-message-container"></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="maa-config-card" style="display: none;">
             <h2>📝 MAA 任务配置</h2>
             <p style="margin-bottom: 10px; color: #666;">直接编辑 my_tasks.toml 文件内容：</p>
             <textarea id="maa-tasks-content" spellcheck="false"
                 style="width: 100%; height: 400px; padding: 15px; border: 2px solid #667eea; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; line-height: 1.5; resize: vertical; background: #f8f9fa; color: #333;"></textarea>
-            
+
             <div class="btn-group" style="margin-top: 15px;">
                 <button class="btn-primary" onclick="saveMaaTasks()">💾 保存 MAA 配置</button>
                 <button class="btn-success" onclick="loadMaaTasks()">🔄 刷新 MAA 配置</button>
@@ -408,7 +415,8 @@
             "></div>
             <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
                 <div class="status-label" id="ws-status">⚪ 连接中...</div>
-                <button class="btn-primary" style="max-width: 120px; padding: 8px 16px;" onclick="clearLogs()">🗑️ 清空日志</button>
+                <button class="btn-primary" style="max-width: 120px; padding: 8px 16px;" onclick="clearLogs()">🗑️
+                    清空日志</button>
             </div>
         </div>
 
@@ -450,22 +458,22 @@
                 const data = await response.json();
 
                 // Update scheduler status
-                document.getElementById('scheduler-status').innerHTML = 
-                    data.scheduler_running 
-                    ? '<span class="status-online">运行中 ✓</span>' 
-                    : '<span class="status-offline">已停止 ✗</span>';
+                document.getElementById('scheduler-status').innerHTML =
+                    data.scheduler_running
+                        ? '<span class="status-online">运行中 ✓</span>'
+                        : '<span class="status-offline">已停止 ✗</span>';
 
                 // Update emulator status
-                document.getElementById('emulator-status').innerHTML = 
-                    data.emulator_alive 
-                    ? '<span class="status-online">在线 ✓</span>' 
-                    : '<span class="status-offline">离线 ✗</span>';
+                document.getElementById('emulator-status').innerHTML =
+                    data.emulator_alive
+                        ? '<span class="status-online">在线 ✓</span>'
+                        : '<span class="status-offline">离线 ✗</span>';
 
                 // Update device status
-                document.getElementById('device-status').innerHTML = 
-                    data.device_connected 
-                    ? '<span class="status-online">已连接 ✓</span>' 
-                    : '<span class="status-offline">未连接 ✗</span>';
+                document.getElementById('device-status').innerHTML =
+                    data.device_connected
+                        ? '<span class="status-online">已连接 ✓</span>'
+                        : '<span class="status-offline">未连接 ✗</span>';
 
                 // Update jobs list
                 const jobsList = document.getElementById('jobs-list');
@@ -578,14 +586,14 @@
         }
 
         // Handle screenshot click and coordinates
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const screenshotImg = document.getElementById('screenshot');
             const coordDisplay = document.getElementById('coordinate-display');
             const screenshotContainer = document.querySelector('.screenshot-container');
 
             if (screenshotImg) {
                 // Update coordinate display on mouse move
-                screenshotImg.addEventListener('mousemove', function(e) {
+                screenshotImg.addEventListener('mousemove', function (e) {
                     const rect = screenshotImg.getBoundingClientRect();
                     const x = e.clientX - rect.left;
                     const y = e.clientY - rect.top;
@@ -594,10 +602,10 @@
                     // Default to 1:1 if actual size not yet loaded
                     const actualW = parseFloat(screenshotImg.dataset.actualWidth) || rect.width;
                     const actualH = parseFloat(screenshotImg.dataset.actualHeight) || rect.height;
-                    
+
                     const scaleX = actualW / rect.width;
                     const scaleY = actualH / rect.height;
-                    
+
                     const actualX = Math.round(x * scaleX);
                     const actualY = Math.round(y * scaleY);
 
@@ -607,7 +615,7 @@
                 });
 
                 // Handle click
-                screenshotImg.addEventListener('click', async function(e) {
+                screenshotImg.addEventListener('click', async function (e) {
                     const rect = screenshotImg.getBoundingClientRect();
                     const x = e.clientX - rect.left;
                     const y = e.clientY - rect.top;
@@ -617,7 +625,7 @@
 
                     const scaleX = actualW / rect.width;
                     const scaleY = actualH / rect.height;
-                    
+
                     const actualX = Math.round(x * scaleX);
                     const actualY = Math.round(y * scaleY);
 
@@ -653,13 +661,13 @@
                     }
                 });
             }
-            
+
             // Handle sanity mode dropdown change
             const sanityModeSelect = document.getElementById('sanity-mode-select');
             const customStageInput = document.getElementById('custom-stage-input');
-            
+
             if (sanityModeSelect && customStageInput) {
-                sanityModeSelect.addEventListener('change', function() {
+                sanityModeSelect.addEventListener('change', function () {
                     if (this.value === 'custom') {
                         customStageInput.style.display = 'block';
                     } else {
@@ -681,11 +689,11 @@
 
                 if (data.success) {
                     const config = data.config;
-                    
+
                     // Set sanity mode
                     const sanityModeSelect = document.getElementById('sanity-mode-select');
                     const customStageInput = document.getElementById('custom-stage-input');
-                    
+
                     const predefinedModes = ['grass', '1-7', 'latest'];
                     if (predefinedModes.includes(config.sanity_mode)) {
                         sanityModeSelect.value = config.sanity_mode;
@@ -695,13 +703,13 @@
                         customStageInput.value = config.sanity_mode;
                         customStageInput.style.display = 'block';
                     }
-                    
+
                     // Set rouge-like
                     document.getElementById('rouge-like-toggle').checked = config.rouge_like;
-                    
+
                     // Set grab red ticket
                     document.getElementById('grab-red-ticket-toggle').checked = config.grab_red_ticket;
-                    
+
                     showMessage('✓ 配置已加载', 'success');
                 } else {
                     showMessage('✗ 加载配置失败: ' + data.message, 'error');
@@ -716,7 +724,7 @@
             try {
                 const sanityModeSelect = document.getElementById('sanity-mode-select');
                 const customStageInput = document.getElementById('custom-stage-input');
-                
+
                 let sanityMode;
                 if (sanityModeSelect.value === 'custom') {
                     sanityMode = customStageInput.value.trim();
@@ -727,10 +735,10 @@
                 } else {
                     sanityMode = sanityModeSelect.value;
                 }
-                
+
                 const rougeLike = document.getElementById('rouge-like-toggle').checked;
                 const grabRedTicket = document.getElementById('grab-red-ticket-toggle').checked;
-                
+
                 const response = await fetch('/api/config', {
                     method: 'POST',
                     headers: {
@@ -754,6 +762,17 @@
             }
         }
 
+        function toggleMaaConfig() {
+            const card = document.getElementById('maa-config-card');
+            if (card.style.display === 'none') {
+                card.style.display = 'block';
+                // Scroll to the card
+                card.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                card.style.display = 'none';
+            }
+        }
+
         // WebSocket Logging
         let ws = null;
         const logTerminal = document.getElementById('log-terminal');
@@ -763,10 +782,10 @@
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/api/logs/ws`;
-            
+
             ws = new WebSocket(wsUrl);
 
-            ws.onopen = function() {
+            ws.onopen = function () {
                 if (wsStatus) wsStatus.innerHTML = '<span class="status-online">🟢 已连接</span>';
                 if (reconnectTimer) {
                     clearInterval(reconnectTimer);
@@ -774,12 +793,12 @@
                 }
             };
 
-            ws.onmessage = function(event) {
+            ws.onmessage = function (event) {
                 if (!logTerminal) return;
                 const msg = event.data;
                 const span = document.createElement('span');
                 span.textContent = msg + '\n';
-                
+
                 // Colorize based on log level
                 if (msg.includes('ERROR')) {
                     span.style.color = '#f87171';
@@ -790,24 +809,24 @@
                 }
 
                 logTerminal.appendChild(span);
-                
+
                 // Auto scroll to bottom
                 logTerminal.scrollTop = logTerminal.scrollHeight;
-                
+
                 // Limit lines to prevent memory issues
                 if (logTerminal.childElementCount > 2000) {
                     logTerminal.removeChild(logTerminal.firstChild);
                 }
             };
 
-            ws.onclose = function() {
+            ws.onclose = function () {
                 if (wsStatus) wsStatus.innerHTML = '<span class="status-offline">🔴 已断开</span>';
                 if (!reconnectTimer) {
                     reconnectTimer = setInterval(connectWebSocket, 3000);
                 }
             };
 
-            ws.onerror = function(error) {
+            ws.onerror = function (error) {
                 console.error('WebSocket error:', error);
                 ws.close();
             };
@@ -828,7 +847,7 @@
             try {
                 const response = await fetch('/api/maa/tasks?t=' + new Date().getTime());
                 const data = await response.json();
-                
+
                 if (data.success) {
                     console.log('Loaded content length:', data.content.length);
                     document.getElementById('maa-tasks-content').value = data.content;
@@ -846,7 +865,7 @@
         async function saveMaaTasks() {
             try {
                 const content = document.getElementById('maa-tasks-content').value;
-                
+
                 const response = await fetch('/api/maa/tasks', {
                     method: 'POST',
                     headers: {
@@ -854,9 +873,9 @@
                     },
                     body: JSON.stringify({ content: content })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     showMessage('✓ MAA任务配置已保存', 'success');
                 } else {
@@ -896,4 +915,5 @@
         updateStatus();
     </script>
 </body>
+
 </html>
