@@ -25,6 +25,8 @@ class MemoryLogHandler(logging.Handler):
 
     def emit(self, record):
         try:
+            if record.name == 'geventwebsocket.handler':
+                return
             msg = self.format(record)
             self.buffer.append(msg)
             
@@ -63,7 +65,9 @@ class WebAdmin:
 
         # Setup logging handler
         self.log_handler = MemoryLogHandler()
+        self.log_handler.setLevel(logging.INFO)
         logging.getLogger().addHandler(self.log_handler)
+        logging.getLogger('geventwebsocket.handler').setLevel(logging.WARNING)
 
         # Setup routes
         self._setup_routes()
