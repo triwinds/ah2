@@ -198,7 +198,7 @@ def run_all_tasks():
     return run_task('my_tasks')
 
 
-def execute_maa_command(cmd: str|list, timeout: int = 3600):
+def execute_maa_command(cmd: str|list, timeout: int = 1800):
     if isinstance(cmd, str):
         cmd = cmd.split(' ')
     logger.debug(f'execute maa command: {[maa_path, *cmd]}')
@@ -218,7 +218,7 @@ stage_code_re = re.compile(r'^[a-zA-Z0-9-]+$')
 avemujica_re = re.compile(r'^SS-\d+$')
 
 
-def maa_fight(stage_code: str, times=None, expiring_medicine=None, timeout=3600):
+def maa_fight(stage_code: str, times=None, expiring_medicine=None, timeout=1800):
     if not inited:
         init_maa_cli()
     if stage_code:

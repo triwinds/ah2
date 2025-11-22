@@ -124,6 +124,55 @@ def start_maa_process(helper: BaseAutomator):
             listener.stop()
 
 
+def start_maa_direct(helper: BaseAutomator):
+    """
+    直接调用 MAA 任务，不使用 multiprocessing.Process
+    这样可以避免进程通信导致的卡顿问题
+    """
+    from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, run_all_tasks
+    
+    retry_count = 0
+    while retry_count < 3:
+        try:
+            # 确保 MAA CLI 已初始化
+            init_maa_cli()
+            
+            # 直接运行 MAA 任务
+            logger.info('开始执行 MAA 任务...')
+            summary = run_all_tasks()
+            
+            # 返回成功结果
+            maa_result = {'ok': True, 'summary': summary}
+            logger.info(f'MAA 任务完成: {summary}')
+            return maa_result
+            
+        except Exception as e:
+            retry_count += 1
+            error_msg = str(e)
+            logger.error(f'MAA 任务执行失败 (尝试 {retry_count}/3): {error_msg}')
+            
+            # 检查是否需要重启游戏
+            from util.adb_utils import check_game_is_in_front
+            if not check_game_is_in_front(helper):
+                logger.info('检测到游戏未在前台，尝试重启游戏...')
+                success, message = start_and_login_arknights(helper)
+                if not success:
+                    logger.error(f'重启游戏失败: {message}')
+            else:
+                logger.info('游戏在前台，尝试运行 MAA startup...')
+                from Arknights.addons.contrib.maa.maa_cli import maa_startup
+                try:
+                    maa_startup()
+                except Exception as startup_error:
+                    logger.error(f'MAA startup 失败: {startup_error}')
+            
+            if retry_count >= 3:
+                # 达到最大重试次数，返回错误
+                return {'ok': False, 'error': error_msg}
+    
+    return {'ok': False, 'error': '未知错误'}
+
+
 def main():
     print('do common task.')
     helper = get_helper()
@@ -147,7 +196,7 @@ def main():
     # old_infrast_task(helper)
     from Arknights.addons.common import CommonAddon
     helper.addon(CommonAddon).back_to_main()
-    maa_result = start_maa_process(helper)
+    maa_result = start_maa_direct(helper)  # 使用直接调用方法，避免 Process 卡顿
     logger.info('maa tasks done, result: {}'.format(maa_result))
 
     # if datetime.now().hour > 20 or datetime.now().hour < 4:
