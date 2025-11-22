@@ -130,16 +130,31 @@ class WebAdmin:
         def api_cancel(job_id):
             bottle.response.content_type = 'application/json'
             try:
-                # Cancel next run of specified job
+                # Skip next run of specified job, but keep subsequent runs scheduled
                 job = self.scheduler.get_job(job_id)
                 if job:
-                    # Remove next run time - job will reschedule based on its trigger
-                    job.modify(next_run_time=None)
-                    return json.dumps({'success': True, 'message': f'Cancelled next run of {job_id}'})
+                    if job.next_run_time is None:
+                        return json.dumps({'success': False, 'message': 'Job has no scheduled runs'})
+                    
+                    # Get the current next run time
+                    current_next_run = job.next_run_time
+                    
+                    # Calculate the next run time after the one we're skipping
+                    # Use the trigger's get_next_fire_time method
+                    now = datetime.now(current_next_run.tzinfo or None)
+                    skipped_next_run = job.trigger.get_next_fire_time(current_next_run, now)
+                    
+                    if skipped_next_run is None:
+                        return json.dumps({'success': False, 'message': 'Cannot calculate next run time'})
+                    
+                    # Modify the job to skip the immediate next run
+                    job.modify(next_run_time=skipped_next_run)
+                    logger.info(f'Skipped next run of {job_id}, rescheduled to {skipped_next_run}')
+                    return json.dumps({'success': True, 'message': f'Skipped next run of {job_id}'})
                 else:
                     return json.dumps({'success': False, 'message': 'Job not found'})
             except Exception as e:
-                logger.error(f'Error cancelling job: {e}')
+                logger.error(f'Error skipping job run: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
 
         @self.app.route('/api/emulator/start', method='POST')
