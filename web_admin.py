@@ -139,21 +139,15 @@ class WebAdmin:
                     # Get the current next run time (this is the one we want to skip)
                     current_next_run = job.next_run_time
                     
-                    # Calculate the run time after the one we're skipping
-                    # Call get_next_fire_time twice:
-                    # 1st call: gets the next run (which is current_next_run itself)
-                    # 2nd call: gets the run AFTER that (which is what we want)
-                    now = datetime.now(current_next_run.tzinfo or None)
-                    next_after_current = job.trigger.get_next_fire_time(current_next_run, now)
-                    
-                    if next_after_current is None:
-                        return json.dumps({'success': False, 'message': 'Cannot calculate next run time'})
-                    
-                    # Now get the run AFTER next_after_current
-                    skipped_next_run = job.trigger.get_next_fire_time(next_after_current, now)
+                    # To get the run AFTER current_next_run, we need to use
+                    # a 'now' time that is AFTER current_next_run
+                    # This way get_next_fire_time will calculate the next run from that point
+                    from datetime import timedelta
+                    fake_now = current_next_run + timedelta(seconds=1)
+                    skipped_next_run = job.trigger.get_next_fire_time(current_next_run, fake_now)
                     
                     if skipped_next_run is None:
-                        return json.dumps({'success': False, 'message': 'Cannot calculate run time after skip'})
+                        return json.dumps({'success': False, 'message': 'Cannot calculate next run time'})
                     
                     # Modify the job to skip the immediate next run
                     job.modify(next_run_time=skipped_next_run)
