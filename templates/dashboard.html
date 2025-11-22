@@ -495,7 +495,7 @@
                                         下次运行: ${job.next_run ? new Date(job.next_run).toLocaleString('zh-CN') : '未设置'}
                                     </div>
                                 </div>
-                                ${job.next_run ? `<button class="btn-danger" style="min-width: auto; padding: 8px 16px; font-size: 0.9em;" onclick="cancelNextRun('${job.id}')">❌ 取消下次运行</button>` : ''}
+                                ${job.next_run ? `<button class="btn-danger" style="flex: none; max-width: 150px; padding: 6px 12px; font-size: 0.85em;" onclick="cancelNextRun('${job.id}')">❌ 取消下次运行</button>` : ''}
                             </div>
                         </li>
                     `).join('');
