@@ -126,6 +126,22 @@ class WebAdmin:
                 logger.error(f'Error triggering task: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
 
+        @self.app.route('/api/cancel/<job_id>', method='POST')
+        def api_cancel(job_id):
+            bottle.response.content_type = 'application/json'
+            try:
+                # Cancel next run of specified job
+                job = self.scheduler.get_job(job_id)
+                if job:
+                    # Remove next run time - job will reschedule based on its trigger
+                    job.modify(next_run_time=None)
+                    return json.dumps({'success': True, 'message': f'Cancelled next run of {job_id}'})
+                else:
+                    return json.dumps({'success': False, 'message': 'Job not found'})
+            except Exception as e:
+                logger.error(f'Error cancelling job: {e}')
+                return json.dumps({'success': False, 'message': str(e)})
+
         @self.app.route('/api/emulator/start', method='POST')
         def api_emulator_start():
             bottle.response.content_type = 'application/json'

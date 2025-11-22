@@ -402,8 +402,10 @@
             <h2>🖥️ 系统日志</h2>
             <div style="margin-bottom: 15px;">
                 <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <button class="btn-primary" id="system-log-tab" onclick="switchLogTab('system')" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">系统日志</button>
-                    <button class="btn-primary" id="maa-log-tab" onclick="switchLogTab('maa')" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">MAA 日志</button>
+                    <button class="btn-primary" id="system-log-tab" onclick="switchLogTab('system')"
+                        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">系统日志</button>
+                    <button class="btn-primary" id="maa-log-tab" onclick="switchLogTab('maa')"
+                        style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">MAA 日志</button>
                 </div>
             </div>
             <div id="log-terminal" style="
@@ -486,9 +488,14 @@
                 if (data.jobs && data.jobs.length > 0) {
                     jobsList.innerHTML = data.jobs.map(job => `
                         <li class="job-item">
-                            <div class="job-name">${job.name}</div>
-                            <div class="job-next-run">
-                                下次运行: ${job.next_run ? new Date(job.next_run).toLocaleString('zh-CN') : '未设置'}
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div class="job-name">${job.name}</div>
+                                    <div class="job-next-run">
+                                        下次运行: ${job.next_run ? new Date(job.next_run).toLocaleString('zh-CN') : '未设置'}
+                                    </div>
+                                </div>
+                                ${job.next_run ? `<button class="btn-danger" style="min-width: auto; padding: 8px 16px; font-size: 0.9em;" onclick="cancelNextRun('${job.id}')">❌ 取消下次运行</button>` : ''}
                             </div>
                         </li>
                     `).join('');
@@ -510,6 +517,21 @@
                     updateStatus();
                 } else {
                     showMessage('✗ 触发失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        async function cancelNextRun(jobId) {
+            try {
+                const response = await fetch(`/api/cancel/${jobId}`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('✓ 已取消下次运行', 'success');
+                    updateStatus();
+                } else {
+                    showMessage('✗ 取消失败: ' + data.message, 'error');
                 }
             } catch (error) {
                 showMessage('✗ 请求失败: ' + error.message, 'error');
@@ -789,11 +811,11 @@
 
         function switchLogTab(type) {
             currentLogType = type;
-            
+
             // Update tab styles
             const systemTab = document.getElementById('system-log-tab');
             const maaTab = document.getElementById('maa-log-tab');
-            
+
             if (type === 'system') {
                 systemTab.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
                 maaTab.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
@@ -801,7 +823,7 @@
                 systemTab.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
                 maaTab.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
             }
-            
+
             // Filter and display logs based on type
             displayFilteredLogs();
         }
@@ -823,19 +845,19 @@
             ws.onmessage = function (event) {
                 if (!logTerminal) return;
                 const msg = event.data;
-                
+
                 // Store all logs
                 allLogs.push({
                     message: msg,
                     timestamp: Date.now(),
                     type: msg.includes('MAA -') ? 'maa' : 'system'
                 });
-                
+
                 // Keep only recent logs to prevent memory issues
                 if (allLogs.length > 5000) {
                     allLogs = allLogs.slice(-3000);
                 }
-                
+
                 // Display filtered logs
                 displayFilteredLogs();
             };
@@ -855,15 +877,15 @@
 
         function displayFilteredLogs() {
             if (!logTerminal) return;
-            
+
             // Clear terminal
             logTerminal.innerHTML = '';
-            
+
             // Filter and display logs based on current type
             const filteredLogs = allLogs.filter(log =>
                 currentLogType === 'system' ? log.type === 'system' : log.type === 'maa'
             );
-            
+
             // Display logs
             filteredLogs.forEach(log => {
                 appendLogMessage(log.message, log.type);
