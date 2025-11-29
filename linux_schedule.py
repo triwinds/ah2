@@ -132,7 +132,7 @@ def clear_sanity_by_red_ticket():
 
 
 def clear_sanity_by_item(only_activity=False):
-    logger.info('clear_sanity_by_item')
+    logger.info(f'clear_sanity_by_item, sanity_mode: {common_config.sanity_mode}')
     # helper.addon(StageNavigator).navigate_and_combat('latest', 1000)
     # helper.addon(StageNavigator).navigate_and_combat('HE-7', 1000)
     # helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
