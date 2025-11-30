@@ -92,7 +92,7 @@ atexit.register(close_all_processes)
 
 class LogParser:
     def __init__(self):
-        self.log_pattern = re.compile(r"^\[(?P<time>[^\]]+)\] \[(?P<level>[^\]]+)\] (?P<message>.*)$")
+        self.log_pattern = re.compile(r"^\[(?P<time>.*?)\s+(?P<level>TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\]\s*(?P<message>.*)$")
         self.valuable_keywords = [
             "Start", "Completed", "Failed", "Stop",  # Task status
             "Recruit", "Tags", "Result",  # Recruitment
@@ -103,23 +103,47 @@ class LogParser:
         self.ignore_keywords = [
             "Screenshot", "Recognized", "Processing", "Wait", "Sleep"
         ]
+        # Buffer for multi-line messages
+        self.current_log = None
+        self.continuation_lines = []
 
     def parse(self, line: str):
-        line = line.strip()
-        if not line:
+        line = line.rstrip('\n\r')  # Keep leading spaces for indentation detection
+        if not line.strip():  # Empty line
             return
 
         match = self.log_pattern.match(line)
-        if not match:
-            # If line doesn't match standard format, it might be a continuation or non-standard log
-            # We can choose to log it as debug or ignore it if it doesn't look important
-            if any(k in line for k in self.valuable_keywords):
-                 maa_output_logger.info(f"[MAA] {line}")
+        if match:
+            # This is a new log entry, flush previous one if exists
+            self._flush_current_log()
+
+            # Start new log entry
+            log_data = match.groupdict()
+            self.current_log = {
+                'level': log_data['level'].upper(),
+                'message': log_data['message']
+            }
+        else:
+            # This is a continuation line (multi-line message)
+            if self.current_log is not None:
+                # Append to current log entry
+                self.continuation_lines.append(line)
+            else:
+                # Orphan line (no current log context), log as-is if valuable
+                if any(k in line for k in self.valuable_keywords):
+                    maa_output_logger.info(f"[MAA] {line.strip()}")
+
+    def _flush_current_log(self):
+        """Flush the current buffered log entry"""
+        if self.current_log is None:
             return
 
-        log_data = match.groupdict()
-        level = log_data['level'].upper()
-        message = log_data['message']
+        level = self.current_log['level']
+        message = self.current_log['message']
+
+        # Append continuation lines if any
+        if self.continuation_lines:
+            message = message + '\n' + '\n'.join(self.continuation_lines)
 
         # Map MAA levels to Python logging levels
         if level in ['FATAL', 'ERROR']:
@@ -130,7 +154,15 @@ class LogParser:
             # Filter INFO logs
             if self._is_valuable(message):
                 maa_output_logger.info(f"[MAA] {message}")
-        # Debug/Trace are ignored by default unless they contain valuable keywords (unlikely for debug)
+        # Debug/Trace are ignored by default unless they contain valuable keywords
+
+        # Reset buffer
+        self.current_log = None
+        self.continuation_lines = []
+
+    def finish(self):
+        """Call this when stream ends to flush any remaining log"""
+        self._flush_current_log()
 
     def _is_valuable(self, message: str) -> bool:
         # Check if message contains any valuable keywords
@@ -186,6 +218,7 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
         p.terminate()
         return f"Task timed out after {timeout} seconds"
     finally:
+        parser.finish()  # Flush any remaining buffered logs
         sel.close()
         if p in processes:
             processes.remove(p)
