@@ -69,7 +69,12 @@ class WebAdmin:
         self.log_handler = MemoryLogHandler()
         self.log_handler.setLevel(logging.INFO)
         logging.getLogger().addHandler(self.log_handler)
-        logging.getLogger('MAA.output').addHandler(self.log_handler)  # MAA output doesn't propagate to root
+        
+        # Setup MAA logger
+        maa_output_logger = logging.getLogger('MAA.output')
+        maa_output_logger.setLevel(logging.TRACE)  # Set logger level to TRACE
+        maa_output_logger.addHandler(self.log_handler)  # MAA output doesn't propagate to root
+        
         logging.getLogger('geventwebsocket.handler').setLevel(logging.WARNING)
 
 
