@@ -20,6 +20,10 @@ root:
   level: DEBUG
   handlers: [console, file]
 loggers:
+  MAA.output:
+    level: INFO
+    handlers: [console]
+    propagate: false
   PIL.PngImagePlugin:
     propagate: false
   cnocr.cn_ocr:

@@ -15,6 +15,7 @@ import re
 
 
 logger = logging.getLogger(__name__)
+maa_output_logger = logging.getLogger('MAA.output')  # Separate logger for MAA CLI output (no file logging)
 maa_path = Path(r'D:\software\maa_cli\maa.exe') if os.name == 'nt' else Path('/root/redroid/maa')
 my_config_path = Path(os.path.realpath(os.path.dirname(__file__))).joinpath('cli_config/maa')
 processes = []
@@ -113,7 +114,7 @@ class LogParser:
             # If line doesn't match standard format, it might be a continuation or non-standard log
             # We can choose to log it as debug or ignore it if it doesn't look important
             if any(k in line for k in self.valuable_keywords):
-                 logger.info(f"[MAA] {line}")
+                 maa_output_logger.info(f"[MAA] {line}")
             return
 
         log_data = match.groupdict()
@@ -122,13 +123,13 @@ class LogParser:
 
         # Map MAA levels to Python logging levels
         if level in ['FATAL', 'ERROR']:
-            logger.error(f"[MAA] {message}")
+            maa_output_logger.error(f"[MAA] {message}")
         elif level == 'WARN':
-            logger.warning(f"[MAA] {message}")
+            maa_output_logger.warning(f"[MAA] {message}")
         elif level == 'INFO':
             # Filter INFO logs
             if self._is_valuable(message):
-                logger.info(f"[MAA] {message}")
+                maa_output_logger.info(f"[MAA] {message}")
         # Debug/Trace are ignored by default unless they contain valuable keywords (unlikely for debug)
 
     def _is_valuable(self, message: str) -> bool:
