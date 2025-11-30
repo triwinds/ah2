@@ -154,7 +154,10 @@ class LogParser:
             # Filter INFO logs
             if self._is_valuable(message):
                 maa_output_logger.info(f"[MAA] {message}")
-        # Debug/Trace are ignored by default unless they contain valuable keywords
+        elif level == 'DEBUG':
+            maa_output_logger.debug(f"[MAA] {message}")
+        elif level == 'TRACE':
+            maa_output_logger.debug(f"[MAA] {message}")
 
         # Reset buffer
         self.current_log = None
