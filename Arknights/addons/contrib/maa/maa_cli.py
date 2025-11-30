@@ -173,8 +173,7 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
                         summary += line
                 else:
                     # stderr contains the logs
-                    # parser.parse(line)
-                    print(line)
+                    parser.parse(line)
 
             # 检查进程是否超时
             if p.poll() is None:  # 如果进程还在运行
