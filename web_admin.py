@@ -72,7 +72,7 @@ class WebAdmin:
         
         # Setup MAA logger
         maa_output_logger = logging.getLogger('MAA.output')
-        maa_output_logger.setLevel(logging.TRACE)  # Set logger level to TRACE
+        maa_output_logger.setLevel(logging.DEBUG)  # Set logger level to DEBUG
         maa_output_logger.addHandler(self.log_handler)  # MAA output doesn't propagate to root
         
         logging.getLogger('geventwebsocket.handler').setLevel(logging.WARNING)
