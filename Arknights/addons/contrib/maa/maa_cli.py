@@ -348,6 +348,15 @@ def _parse_fight_log(log: str) -> Dict:
 
 
 def update_maa():
+     # Update MAA core components
+    logger.info('Updating MAA core...')
+    process = subprocess.Popen([maa_path, 'self', 'update'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+    out += err
+    if 'Error' in out.decode():
+        logger.error(f'update MAA core failed: {out.decode()}')
+    else:
+        logger.info('MAA core updated successfully')
     process = subprocess.Popen([maa_path, 'update'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
     out += err
