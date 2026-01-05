@@ -63,6 +63,7 @@ def download_maa_cli():
     zip_file = maa_path.parent.joinpath(filename)
     tar = tarfile.open(zip_file)
     for member in tar.getmembers():
+        logger.debug(f'Found member in tar: {member.name}')
         if member.name.endswith('/maa'):
             logger.info(f'Extracting {member.name} from {zip_file}')
             tar.extract(member, maa_path.parent)
