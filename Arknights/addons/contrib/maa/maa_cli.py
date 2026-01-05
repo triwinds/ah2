@@ -56,19 +56,23 @@ def download_maa_cli():
 #     requests download from download_url
     logger.info(f'maa-cli download url: {download_url}')
     resp = requests.get(download_url)
-    with open(maa_path.parent.joinpath(filename), 'wb') as f:
+    zip_file = maa_path.parent.joinpath(filename)
+    with open(zip_file, 'wb') as f:
         f.write(resp.content)
+    logger.info(f'maa-cli downloaded: {zip_file}')
+    logger.debug(f'Downloaded file size: {os.path.getsize(zip_file)} bytes')
     # unzip
     import tarfile
-    zip_file = maa_path.parent.joinpath(filename)
+    
     tar = tarfile.open(zip_file)
+    logger.debug(f'Opened tar file: {zip_file}')
     for member in tar.getmembers():
         logger.debug(f'Found member in tar: {member.name}')
-        if member.name.endswith('/maa'):
+        if member.name.endswith('maa'):
             logger.info(f'Extracting {member.name} from {zip_file}')
             tar.extract(member, maa_path.parent)
-            shutil.move(maa_path.parent.joinpath(member.name), maa_path)
-            shutil.rmtree(maa_path.parent.joinpath(member.name).parent)
+            # shutil.move(maa_path.parent.joinpath(member.name), maa_path)
+            # shutil.rmtree(maa_path.parent.joinpath(member.name).parent)
             break
     tar.close()
     os.remove(zip_file)
