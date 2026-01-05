@@ -320,7 +320,7 @@ def check_and_click_cache_repair() -> bool:
     Returns:
         bool: True if both clicks were successful, False otherwise
     """
-    from imgreco.ppocr_utils import detect_box, get_ppocr
+    from imgreco.ppocr_utils import detect_box
     from util.cvimage import Image as CVImage
 
     # First screenshot to check for '清除缓存'
