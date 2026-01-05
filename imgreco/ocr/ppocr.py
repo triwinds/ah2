@@ -12,7 +12,7 @@ is_online = False
 
 info = "rapidocr"
 
-from imgreco.ppocr_utils import get_rapidocr, get_no_det_rapidocr
+from imgreco.ppocr_utils import get_rapidocr, ocr_for_single_line as _ocr_for_single_line
 
 ocr = get_rapidocr()
 
@@ -23,7 +23,7 @@ def check_supported():
     return True
 
 
-class PaddleOcr(OcrEngine):
+class RapidOcr(OcrEngine):
     def __init__(self, lang, **kwargs):
         super().__init__(lang, **kwargs)
 
@@ -34,11 +34,11 @@ class PaddleOcr(OcrEngine):
         single_line_flag = image.height < 35
         if hints is not None and OcrHint.SINGLE_LINE in hints:
             single_line_flag = True
-        
+
         # RapidOCR doesn't support char_whitelist directly, so we'll ignore it for now
         # if 'char_whitelist' in kwargs:
         #     ocr.set_char_whitelist(kwargs['char_whitelist'])
-        
+
         if single_line_flag:
             if image.height > image.width:
                 cv_img = np.rot90(cv_img)
@@ -46,7 +46,7 @@ class PaddleOcr(OcrEngine):
             ocr_result = ocr(cv_img)
             texts = ocr_result.txts if ocr_result else []
             scores = ocr_result.scores if ocr_result else []
-            logging.debug(f'PaddleOcr.recognize: {texts}')
+            logging.debug(f'RapidOcr.recognize: {texts}')
             if texts and scores and scores[0] > 0.55:
                 result = OcrResult([OcrLine([OcrWord(Rect(0, 0), w) for w in texts[0].strip()])])
             else:
@@ -55,13 +55,13 @@ class PaddleOcr(OcrEngine):
             # RapidOCR returns a RapidOCROutput object with attributes
             ocr_result = ocr(cv_img)
             texts = ocr_result.txts if ocr_result else []
-            logging.debug(f'PaddleOcr.recognize: {texts}')
+            logging.debug(f'RapidOcr.recognize: {texts}')
             if texts:
                 line = [OcrLine([OcrWord(Rect(0, 0), w) for w in text]) for text in texts]
                 result = OcrResult(line)
             else:
                 result = OcrResult([])
-        
+
         # RapidOCR doesn't support char_whitelist directly
         # if 'char_whitelist' in kwargs:
         #     ocr.set_char_whitelist(None)
@@ -69,22 +69,20 @@ class PaddleOcr(OcrEngine):
 
 
 def ocr_for_single_line(img, cand_alphabet: str = None):
-    # RapidOCR doesn't support char_whitelist directly
-    # if cand_alphabet:
-    #     ocr.set_char_whitelist(cand_alphabet)
-    
-    # RapidOCR returns a RapidOCROutput object with attributes
-    ocr_result = get_no_det_rapidocr()(img)
-    texts = ocr_result.txts if ocr_result else []
-    if texts:
-        res = texts[0].strip()
-    else:
-        res = ''
-    
-    # RapidOCR doesn't support char_whitelist directly
-    # if cand_alphabet:
-    #     ocr.set_char_whitelist(None)
-    return res
+    """
+    对单行文本进行OCR识别，返回识别的文本字符串
+
+    注意: RapidOCR 不支持 cand_alphabet 参数，该参数将被忽略
+
+    Args:
+        img: 图像数据
+        cand_alphabet: 候选字符集（已废弃，不再使用）
+
+    Returns:
+        str: 识别的文本
+    """
+    # RapidOCR doesn't support char_whitelist directly, so we ignore it
+    return _ocr_for_single_line(img)
 
 
 def do_ocr(img, cand_alphabet: str = None):
@@ -132,4 +130,4 @@ def ocr_and_correct(img, s_list, cand_alphabet: str = None, min_score=0.5, log_l
     return res[0] if res else None
 
 
-Engine = PaddleOcr
+Engine = RapidOcr

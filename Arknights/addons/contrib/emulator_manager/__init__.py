@@ -362,7 +362,16 @@ def check_and_click_cache_repair() -> bool:
             while time.time() - st < max_wait_time:
                 logger.info('等待修复中, %d / %d 秒' % (time.time() - st, max_wait_time))
                 screen = screenshot()
-                res = get_ppocr().detect_and_ocr(screen.array)
+                # Use rapidocr to detect and OCR the screen
+                from imgreco.ppocr_utils import get_rapidocr, OcrResult
+                ocr_result = get_rapidocr()(screen.array)
+
+                # Convert to OcrResult format
+                results = []
+                if ocr_result and ocr_result.boxes and ocr_result.txts and ocr_result.scores:
+                    for box, text, score in zip(ocr_result.boxes, ocr_result.txts, ocr_result.scores):
+                        results.append(OcrResult(text, score, box))
+                res = results
                 flag = False
                 for ocr_res in res:
                     if ocr_res.ocr_text.startswith('正在恢复'):

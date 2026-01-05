@@ -14,7 +14,7 @@ from Arknights.addons.record import RecordAddon
 from Arknights.addons.stage_navigator import StageNavigator, navigator
 from automator import AddonBase
 from imgreco import resources
-from imgreco.ppocr_utils import get_ppocr
+from imgreco.ppocr_utils import ocr_for_single_line
 
 icon1 = resources.load_image('contrib/start_sp_stage/icon1.png', imread_flags=cv2.IMREAD_GRAYSCALE).array
 icon2 = resources.load_image('contrib/start_sp_stage/icon2.png', imread_flags=cv2.IMREAD_GRAYSCALE).array
@@ -54,12 +54,6 @@ def crop_image_only_outside(gray_img, raw_img, threshold=128, padding=3):
     return raw_img[row_start - padding:row_end + padding, col_start - padding:col_end + padding]
 
 
-def ocr_for_single_line(img):
-    res = get_ppocr().ocr_single_line(img)
-    if res:
-        return res[0]
-
-
 def search_in_list(s_list, x, min_score=0.5):
     import textdistance
     max_sim = -1
@@ -79,6 +73,8 @@ def search_in_list(s_list, x, min_score=0.5):
 
 def ocr_and_correct(img, s_list, min_score=0.5, log_level=None):
     ocr_str = ocr_for_single_line(img)
+    if not ocr_str:
+        return None
     res = search_in_list(s_list, ocr_str, min_score)
     if log_level:
         logging.log(log_level, f'ocr_str, res: {ocr_str, res}')

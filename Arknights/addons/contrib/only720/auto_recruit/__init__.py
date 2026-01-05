@@ -13,8 +13,7 @@ from Arknights.addons.contrib.common_cache import load_game_data
 from Arknights.addons.contrib.only720.old_base import OldMixin
 from Arknights.addons.record import RecordAddon
 from Arknights.addons.recruit import RecruitAddon
-from imgreco.ocr.ppocr import ocr_for_single_line, ocr_and_correct
-from imgreco.ppocr_utils import get_ppocr
+from imgreco.ppocr_utils import ocr_for_single_line
 from imgreco.stage_ocr import do_tag_ocr
 from util import cvimage
 
@@ -104,13 +103,10 @@ def get_name3(pil_screen):
     tag_img = crop_to_white(tag_img)
     # tag_img = cv2.resize(tag_img, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
     # show_img(tag_img)
-    from imgreco.ppocr_utils import get_ppocr
-    res = get_ppocr().ocr_lines([tag_img])[0]
-    print(res)
-    res = res[0]
-    logger.debug('get_name3: %s' % res)
-    if '的信物' in res:
-        return res[0:res.index('的信物')]
+    text = ocr_for_single_line(tag_img)
+    logger.debug('get_name3: %s' % text)
+    if '的信物' in text:
+        return text[0:text.index('的信物')]
     return None
 
 
@@ -146,7 +142,8 @@ def ocr_rect(screen, rect, thresh=None):
     if thresh is not None:
         tag_array = cv2.threshold(tag.convert('L').array, thresh, 255, cv2.THRESH_BINARY)[1]
         tag = cvimage.fromarray(tag_array, 'L').convert('BGR')
-    return get_ppocr().ocr_single_line(tag.array)
+
+    return ocr_for_single_line(tag.array)
 
 
 class AutoRecruitAddOn(OldMixin):

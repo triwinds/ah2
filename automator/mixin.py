@@ -171,7 +171,7 @@ class AddonMixin(imgreco.common.RoiMatchingMixin):
         vw, vh = self.helper.vw, self.helper.vh
         roi_rect = (58.984*vw, 89.167*vh, 68.281*vw, 95.556*vh)
         roi = raw_screen.crop(roi_rect)
-        from imgreco.ocr.ppocr import ocr_for_single_line
+        from imgreco.ppocr_utils import ocr_for_single_line
         while '提交反馈' in ocr_for_single_line(roi.array):
             self.delay(0.5, False)
             raw_screen = self.helper.control.screenshot(cached=False).convert(mode)

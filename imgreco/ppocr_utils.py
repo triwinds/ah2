@@ -30,56 +30,6 @@ class OcrResult:
         return self.__str__()
 
 
-class RapidOCRAdapter:
-    """RapidOCR适配器，保持与ppocr的API兼容"""
-
-    def detect_and_ocr(self, img, drop_score=0.3, box_thresh=0.1, unclip_ratio=1.6) -> List[OcrResult]:
-        """适配detect_and_ocr方法"""
-        ocr_result: RapidOCROutput = get_rapidocr()(img, box_thresh=box_thresh, unclip_ratio=unclip_ratio)
-
-        results = []
-        if ocr_result is None:
-            return results
-        if ocr_result.boxes is None:
-            return results
-        if ocr_result.txts is None:
-            return results
-        if ocr_result.scores is None:
-            return results
-
-        for box, text, score in zip(ocr_result.boxes, ocr_result.txts, ocr_result.scores):
-            if score >= drop_score:
-                results.append(OcrResult(text, score, box))
-        return results
-
-    def ocr_single_line(self, img):
-        """适配ocr_single_line方法，返回字符串列表"""
-        ocr_result = get_no_det_rapidocr()(img)
-        if ocr_result is None:
-            return []
-
-        # 返回元组列表
-        for text, score in zip(ocr_result.txts, ocr_result.scores):
-            return text, score
-        return None
-
-    def ocr_lines(self, img_list):
-        """适配ocr_lines方法，返回字符串列表的列表"""
-        results = []
-        for img in img_list:
-            ocr_result = get_no_det_rapidocr()(img)
-            if ocr_result is None:
-                results.append([])
-                continue
-
-            # 返回元组列表
-            line_results = []
-            for text, score in zip(ocr_result.txts, ocr_result.scores):
-                line_results.append((text, score))
-            results.append(line_results)
-        return results
-
-
 @cache
 def get_rapidocr():
     from rapidocr import RapidOCR
@@ -92,9 +42,20 @@ def get_no_det_rapidocr():
     return RapidOCR(params={"Global.log_level": "ERROR", "Global.use_det": False})
 
 
-@lru_cache(1)
-def get_ppocr():
-    return RapidOCRAdapter()
+def ocr_for_single_line(img) -> str:
+    """
+    对单行文本进行OCR识别，返回识别的文本字符串
+
+    Args:
+        img: 图像数据，可以是 numpy array 或其他图像格式
+
+    Returns:
+        str: 识别的文本，如果识别失败返回空字符串
+    """
+    ocr_result = get_no_det_rapidocr()(img)
+    if ocr_result and ocr_result.txts:
+        return ocr_result.txts[0]
+    return ''
 
 
 def calc_box_center(box, scale=1):
@@ -108,9 +69,17 @@ def detect_box(screen: Image, target_name: str, drop_score=0.3, box_thresh=0.1, 
     if scale != 1:
         screen = screen.resize((screen.width / scale, 720))
     dbg_screen = screen.copy()
-    ppocr = get_ppocr()
-    boxed_results = ppocr.detect_and_ocr(screen.array, drop_score=drop_score,
-                                         box_thresh=box_thresh, unclip_ratio=unclip_ratio)
+
+    # 使用 rapidocr 直接进行OCR识别
+    ocr_result: RapidOCROutput = get_rapidocr()(screen.array, box_thresh=box_thresh, unclip_ratio=unclip_ratio)
+
+    # 转换为 OcrResult 列表
+    boxed_results = []
+    if ocr_result and ocr_result.boxes and ocr_result.txts and ocr_result.scores:
+        for box, text, score in zip(ocr_result.boxes, ocr_result.txts, ocr_result.scores):
+            if score >= drop_score:
+                boxed_results.append(OcrResult(text, score, box))
+
     max_score = 0
     max_res = None
     for res in boxed_results:

@@ -8,7 +8,7 @@ import numpy as np
 from Arknights.addons.contrib.base import crop_cv_by_rect
 from Arknights.addons.contrib.only720.old_base import _find_template2, OldMixin
 from imgreco.common import crop_image_only_outside, has_color, test_color
-from imgreco.ocr.ppocr import ocr as ppocr
+from imgreco.ppocr_utils import ocr_for_single_line
 from imgreco.stage_ocr import predict_char_images, crop_char_img
 
 
@@ -90,9 +90,7 @@ def crop_friend_name_tag(cv_screen, scale, send_button_pos):
 def reco_friend_name(cv_screen, scale, send_button_pos):
     name_tag = crop_friend_name_tag(cv_screen, scale, send_button_pos)
     # show_img(name_tag)
-    ocr_res = ppocr.ocr_single_line(name_tag)
-    if ocr_res:
-        return ocr_res[0].strip()
+    return ocr_for_single_line(name_tag).strip()
 
 
 def crop_friend_clue_tag(cv_screen, scale, send_button_pos):
@@ -242,7 +240,7 @@ class AutoClueAddOn(OldMixin):
             name_tag = ~clues_area_img[max_loc[1] - 80: max_loc[1] - 55, max_loc[0] + 174: max_loc[0] + 374]
             # cv2.rectangle(clues_area_img, (max_loc[0] + 174, max_loc[1] - 80), (max_loc[0] + 374, max_loc[1] - 55), 0, 2)
             name_tag = crop_image_only_outside(name_tag, name_tag)
-            clue_send_from = ppocr.ocr_single_line(cv2.cvtColor(name_tag, cv2.COLOR_GRAY2RGB))[0]
+            clue_send_from = ocr_for_single_line(cv2.cvtColor(name_tag, cv2.COLOR_GRAY2RGB))
             self.logger.info(f'use clue send from {clue_send_from}.')
             add_receive_record(clue_send_from)
         else:

@@ -11,9 +11,9 @@ import numpy as np
 from Arknights.addons.contrib.base import crop_cv_by_rect
 from Arknights.addons.contrib.common_cache import load_game_data
 from automator import AddonBase
-from imgreco.ocr.ppocr import search_in_list, ocr
+from imgreco.ocr.ppocr import search_in_list
 from imgreco.stage_ocr import do_tag_ocr
-from imgreco.ppocr_utils import get_ppocr
+from imgreco.ppocr_utils import ocr_for_single_line
 logger = logging.getLogger(__name__)
 
 
@@ -33,7 +33,6 @@ cn_op_names = set()
 for cid, character_info in character_table.items():
     cn_op_names.add(character_info['name'])
 
-ppocr = get_ppocr()
 ppocr_fix_map = {
     'e': '山',
     '早': '霜叶',
@@ -126,17 +125,18 @@ def crop_image_only_outside(gray_img, raw_img, threshold=128, padding=3):
 
 def ppocr_tag(tag):
     # show_img(tag)
-    res = ppocr.ocr_single_line(tag)
-    logger.debug(f'raw ppocr: {res}')
-    if not res:
+    text = ocr_for_single_line(tag)
+    if not text:
         return None
-    if res[0] == '叶':
+
+    logger.debug(f'raw rapidocr: {text}')
+
+    if text == '叶':
         return '霜叶' if tag.shape[1] > 40 else '吽'
-    if res[0] == '陈':
-        return '陈' if res[1] > 0.5 else '砾'
-    if res[1] < 0.5 and res[0] not in ppocr_fix_map:
-        return None
-    name = res[0].lower()
+    if text == '陈':
+        # 无法获取 score，使用启发式规则
+        return '陈'
+    name = text.lower()
     name = ppocr_fix_map.get(name, name)
     res = search_in_list(cn_op_names, name, 0.5)
     if res:
@@ -496,11 +496,8 @@ class AutoShiftAddOn(AddonBase):
 
     def get_current_room_name(self):
         vw, vh = self.vw, self.vh
-        
         room_tag = self.screenshot().crop((58.750*vh, 2.778*vh, 80.139*vh, 7.639*vh)).array
-        res = ocr.ocr_single_line(room_tag)
-        if res:
-            return res[0]
+        return ocr_for_single_line(room_tag)
 
     def clear_drones(self, room):
         logger.info('clear drones...')
