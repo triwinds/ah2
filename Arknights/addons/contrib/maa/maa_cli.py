@@ -66,15 +66,41 @@ def download_maa_cli():
     
     tar = tarfile.open(zip_file)
     logger.debug(f'Opened tar file: {zip_file}')
+    maa_member = None
     for member in tar.getmembers():
         logger.debug(f'Found member in tar: {member.name}')
-        if member.name.endswith('maa'):
-            logger.info(f'Extracting {member.name} from {zip_file}')
-            tar.extract(member, maa_path.parent)
-            # shutil.move(maa_path.parent.joinpath(member.name), maa_path)
-            # shutil.rmtree(maa_path.parent.joinpath(member.name).parent)
+        if member.name.endswith('maa') and member.isfile():
+            maa_member = member
+            logger.info(f'Found maa executable: {member.name}')
             break
-    tar.close()
+
+    if maa_member is None:
+        tar.close()
+        raise Exception('maa executable not found in tar file')
+
+    # Extract to a temporary directory
+    temp_extract_path = maa_path.parent.joinpath('.maa_temp_extract')
+    temp_extract_path.mkdir(exist_ok=True)
+
+    try:
+        logger.info(f'Extracting {maa_member.name} from {zip_file}')
+        tar.extract(maa_member, temp_extract_path)
+        tar.close()
+
+        # Get the actual extracted file path
+        extracted_file = temp_extract_path.joinpath(maa_member.name)
+        logger.debug(f'Extracted file location: {extracted_file}')
+
+        # Move to the target location
+        if maa_path.exists():
+            maa_path.unlink()
+        shutil.move(str(extracted_file), str(maa_path))
+        logger.info(f'Moved maa executable to {maa_path}')
+    finally:
+        # Clean up temporary directory
+        if temp_extract_path.exists():
+            shutil.rmtree(temp_extract_path)
+            logger.debug(f'Cleaned up temporary directory: {temp_extract_path}')
     os.remove(zip_file)
     os.chmod(maa_path, 0o755)
     logger.info(f'maa-cli download to {maa_path}')
