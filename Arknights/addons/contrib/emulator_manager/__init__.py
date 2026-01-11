@@ -300,10 +300,32 @@ def start_and_login_arknights_maa(helper=None) -> Tuple[bool, str]:
     """
     try:
         from Arknights.addons.contrib.maa.maa_cli import maa_startup
+        from util.adb_utils import check_game_is_in_front
+
         if helper is None:
             helper = get_helper()
-        maa_startup()
-        return True, "MAA startup completed successfully"
+
+        max_retry = 5
+        for attempt in range(max_retry):
+            logger.info(f'MAA startup attempt {attempt + 1}/{max_retry}')
+            maa_startup()
+
+            # Wait a bit for the game to fully start
+            time.sleep(2)
+
+            # Check if game is in front
+            if check_game_is_in_front(helper):
+                logger.info('Game is in front, startup successful')
+                return True, "MAA startup completed successfully"
+            else:
+                logger.warning(f'Game is not in front after attempt {attempt + 1}')
+                if attempt < max_retry - 1:
+                    logger.info('Retrying maa_startup...')
+                else:
+                    logger.error('Game failed to start after all retry attempts')
+                    return False, "Game did not come to front after maximum retries"
+
+        return False, "Failed to start game"
     except Exception as e:
         logger.error(f"MAA startup failed: {str(e)}")
         # Fallback to original method
