@@ -57,7 +57,7 @@ def get_auto_connect_candidates(targets: list[ControllerTarget] = ..., preferenc
         return max_tier_targets
 
 def auto_connect(targets: list[ControllerTarget] = ..., preference: str = None):
-    selected_targets = get_auto_connect_candidates(targets)
+    selected_targets = get_auto_connect_candidates(targets, preference)
     if len(selected_targets) == 0:
         raise IndexError("no target enumerated")
     if len(selected_targets) == 1:
