@@ -311,19 +311,23 @@ def start_and_login_arknights_maa(helper=None) -> Tuple[bool, str]:
             maa_startup()
 
             # Wait a bit for the game to fully start
-            time.sleep(2)
+            time.sleep(10)
 
-            # Check if game is in front
-            if check_game_is_in_front(helper):
-                logger.info('Game is in front, startup successful')
+            # Try to navigate back to main screen
+            try:
+                helper.addon(CommonAddon).back_to_main()
+                logger.info('Successfully navigated to main screen, startup successful')
                 return True, "MAA startup completed successfully"
-            else:
-                logger.warning(f'Game is not in front after attempt {attempt + 1}')
+            except Exception as e:
+                logger.warning(f'back_to_main failed after attempt {attempt + 1}: {str(e)}')
                 if attempt < max_retry - 1:
-                    logger.info('Retrying maa_startup...')
+                    logger.info('Killing game and retrying maa_startup...')
+                    # Kill the game
+                    helper.control.adb.shell('am force-stop com.hypergryph.arknights')
+                    time.sleep(2)
                 else:
                     logger.error('Game failed to start after all retry attempts')
-                    return False, "Game did not come to front after maximum retries"
+                    return False, "Failed to navigate to main screen after maximum retries"
 
         return False, "Failed to start game"
     except Exception as e:
