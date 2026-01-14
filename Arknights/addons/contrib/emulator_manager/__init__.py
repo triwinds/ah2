@@ -10,6 +10,7 @@ from util.richlog import get_logger
 from Arknights.configure_launcher import get_helper
 from typing import Tuple, Optional
 from util.cvimage import Image as CVImage
+from automator import BaseAutomator
 
 
 file_root = os.path.realpath(os.path.dirname(__file__)) + "/"
