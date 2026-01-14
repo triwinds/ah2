@@ -495,14 +495,14 @@ def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
 
     # Try MAA CLI first with retry
     try:
-        maa_startup_with_retry(max_retry=1, retry_delay=1)
+        maa_startup_with_retry(max_retry=1)
         return True, "MAA startup completed successfully"
     except Exception as e:
         logger.error(f"MAA startup failed: {str(e)}")
         logger.info("maa startup 失败, 尝试修复资源")
         if check_and_click_cache_repair():
             try:
-                maa_startup_with_retry(max_retry=3, retry_delay=1)
+                maa_startup_with_retry(max_retry=3)
             except Exception as e:
                 logger.error(f"修复资源后，maa startup 错误: {str(e)}")
 
