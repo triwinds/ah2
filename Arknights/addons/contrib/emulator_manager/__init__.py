@@ -441,9 +441,6 @@ def maa_startup_with_retry(
     Args:
         helper: Arknights helper instance (optional)
         max_retry: Maximum number of retry attempts (default: 3)
-
-    Returns:
-        Tuple[bool, str]: (success, message)
     """
     if helper is None:
         helper = get_helper()
@@ -461,7 +458,7 @@ def maa_startup_with_retry(
             # Try to navigate back to main screen to verify startup
             helper.addon(CommonAddon).back_to_main()
             logger.info("Successfully navigated to main screen, startup successful")
-            return True, "MAA startup completed successfully"
+            return
 
         except Exception as e:
             logger.warning(f"back_to_main failed after attempt {attempt + 1}: {str(e)}")
@@ -472,12 +469,8 @@ def maa_startup_with_retry(
                 time.sleep(2)
             else:
                 logger.error("Game failed to start after all retry attempts")
-                return (
-                    False,
-                    f"Failed to navigate to main screen after {max_retry} attempts: {str(e)}",
-                )
-
-    return False, "Failed to start game"
+                raise e
+    raise RuntimeError("Unexpected error in maa_startup_with_retry")
 
 
 def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
@@ -495,7 +488,7 @@ def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
 
     # Try MAA CLI first with retry
     try:
-        maa_startup_with_retry(max_retry=1)
+        maa_startup_with_retry(max_retry=2)
         return True, "MAA startup completed successfully"
     except Exception as e:
         logger.error(f"MAA startup failed: {str(e)}")
