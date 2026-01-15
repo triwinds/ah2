@@ -488,7 +488,7 @@ def start_and_login_arknights(helper=None) -> Tuple[bool, str]:
 
     # Try MAA CLI first with retry
     try:
-        maa_startup_with_retry(max_retry=2)
+        maa_startup_with_retry(max_retry=4)
         return True, "MAA startup completed successfully"
     except Exception as e:
         logger.error(f"MAA startup failed: {str(e)}")
