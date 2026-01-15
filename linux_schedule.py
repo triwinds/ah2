@@ -263,8 +263,8 @@ def main():
     # do_works()
     scheduler = BlockingScheduler(timezone='Asia/Shanghai')
     # scheduler.add_job(recruit, 'cron', day_of_week='0,1,2', hour='19', minute=0)
-    scheduler.add_job(close_emulator, 'cron', day='*', hour=4, minute=5, id='close_emulator')
-    scheduler.add_job(do_works, 'cron', hour='*/4', minute=15, id='do_works')
+    scheduler.add_job(close_emulator, 'cron', day='*', hour=4, minute=5, id='close_emulator', misfire_grace_time=60)
+    scheduler.add_job(do_works, 'cron', hour='*/4', minute=15, id='do_works', misfire_grace_time=60)
     
     # Start web admin interface
     def get_config_functions():
