@@ -75,7 +75,7 @@ def detect_box(screen: Image, target_name: str, drop_score=0.3, box_thresh=0.1, 
 
     # 转换为 OcrResult 列表
     boxed_results = []
-    if ocr_result and ocr_result.boxes and ocr_result.txts and ocr_result.scores:
+    if ocr_result and ocr_result.boxes is not None and len(ocr_result.boxes) > 0 and ocr_result.txts and ocr_result.scores:
         for box, text, score in zip(ocr_result.boxes, ocr_result.txts, ocr_result.scores):
             if score >= drop_score:
                 boxed_results.append(OcrResult(text, score, box))
