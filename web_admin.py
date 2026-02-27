@@ -4,6 +4,7 @@ from bottle.ext.websocket import GeventWebSocketServer
 from bottle.ext.websocket import websocket
 import json
 import logging
+import re
 import threading
 import time
 import base64
@@ -64,6 +65,9 @@ class WebAdmin:
         self.app = bottle.Bottle()
         self.server_thread = None
         self.is_running = False
+        self.max_screen_stream_connections = 2
+        self._screen_stream_connections = 0
+        self._screen_stream_lock = threading.Lock()
 
         # Setup logging handler
         self.log_handler = MemoryLogHandler()
@@ -107,6 +111,80 @@ class WebAdmin:
             finally:
                 self.log_handler.sockets.discard(ws)
 
+        @self.app.route('/api/screen/ws', apply=[websocket])
+        def api_screen_ws(ws):
+            if ws is None:
+                bottle.response.status = 400
+                return 'WebSocket connection required'
+
+            with self._screen_stream_lock:
+                if self._screen_stream_connections >= self.max_screen_stream_connections:
+                    try:
+                        ws.send(json.dumps({
+                            'type': 'stream_status',
+                            'status': 'error',
+                            'message': 'Too many stream connections'
+                        }))
+                    except Exception:
+                        pass
+                    try:
+                        ws.close()
+                    except Exception:
+                        pass
+                    return
+                self._screen_stream_connections += 1
+                active_connections = self._screen_stream_connections
+            logger.info(f'Screen stream websocket connected, active connections={active_connections}')
+
+            screenrecord_cmd = 'screenrecord --output-format=h264 --time-limit=175 -'
+            consecutive_failures = 0
+
+            try:
+                while True:
+                    helper, helper_error = self._get_helper_with_reconnect()
+                    if helper is None:
+                        consecutive_failures += 1
+                        logger.error(f'No connected device for screen stream ({consecutive_failures}/3): {helper_error}')
+                        if consecutive_failures >= 3:
+                            self._send_stream_status(ws, 'fallback', helper_error or 'No device connected')
+                            return
+                        time.sleep(min(2 ** (consecutive_failures - 1), 5))
+                        continue
+
+                    try:
+                        sock = helper.control.adb.exec_stream(screenrecord_cmd)
+                    except Exception as stream_error:
+                        consecutive_failures += 1
+                        logger.error(f'Failed to start screenrecord stream ({consecutive_failures}/3): {stream_error}')
+                        if consecutive_failures >= 3:
+                            self._send_stream_status(ws, 'fallback', f'screenrecord unavailable: {stream_error}')
+                            return
+                        time.sleep(min(2 ** (consecutive_failures - 1), 5))
+                        continue
+
+                    consecutive_failures = 0
+
+                    try:
+                        while True:
+                            chunk = sock.recv(4096)
+                            if not chunk:
+                                # screenrecord exits when --time-limit is reached; restart immediately
+                                break
+                            ws.send(chunk)
+                    except Exception as stream_loop_error:
+                        logger.info(f'Screen stream websocket closed: {stream_loop_error}')
+                        return
+                    finally:
+                        try:
+                            sock.close()
+                        except Exception:
+                            pass
+            finally:
+                with self._screen_stream_lock:
+                    self._screen_stream_connections = max(0, self._screen_stream_connections - 1)
+                    active_connections = self._screen_stream_connections
+                logger.info(f'Screen stream websocket disconnected, active connections={active_connections}')
+
 
         @self.app.route('/')
         def index():
@@ -116,6 +194,27 @@ class WebAdmin:
         def api_status():
             bottle.response.content_type = 'application/json'
             return json.dumps(self._get_status())
+
+        @self.app.route('/api/device')
+        def api_device():
+            bottle.response.content_type = 'application/json'
+            try:
+                helper, helper_error = self._get_helper_with_reconnect()
+                if helper is None:
+                    return json.dumps({'success': False, 'connected': False, 'message': helper_error or 'No device connected'})
+
+                controller = getattr(helper, '_controller', None)
+                if controller is None:
+                    return json.dumps({'success': True, 'connected': False, 'message': 'No device connected'})
+
+                return json.dumps({
+                    'success': True,
+                    'connected': True,
+                    'device': str(controller)
+                })
+            except Exception as e:
+                logger.error(f'Error getting device info: {e}')
+                return json.dumps({'success': False, 'connected': False, 'message': str(e)})
 
         @self.app.route('/api/trigger', method='POST')
         def api_trigger():
@@ -196,32 +295,10 @@ class WebAdmin:
         @self.app.route('/api/screenshot')
         def api_screenshot():
             try:
-                helper = self.helper_getter()
-
-                # Check if device is already connected
-                device_connected = False
-                if helper is not None and hasattr(helper, '_controller') and helper._controller is not None:
-                    device_connected = True
-
-                if not device_connected:
-                    try:
-                        from Arknights.configure_launcher import reconnect_helper, get_helper
-                        logger.info('Device not connected, attempting to reconnect...')
-                        reconnect_helper()
-                        helper = get_helper()
-
-                        # Verify reconnection succeeded
-                        try:
-                            _ = helper.control
-                            logger.info('Successfully reconnected to device')
-                        except Exception:
-                            bottle.response.content_type = 'application/json'
-                            return json.dumps({'success': False, 'message': 'No device connected'})
-                    except Exception as reconnect_error:
-                        logger.error(f'Failed to reconnect: {reconnect_error}')
-                        bottle.response.content_type = 'application/json'
-                        return json.dumps({'success': False,
-                                           'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
+                helper, helper_error = self._get_helper_with_reconnect()
+                if helper is None:
+                    bottle.response.content_type = 'application/json'
+                    return json.dumps({'success': False, 'message': helper_error or 'No device connected'})
 
                 # Get screenshot from controller
                 screenshot = helper.control.screenshot()
@@ -258,29 +335,9 @@ class WebAdmin:
                     return json.dumps({'success': False, 'message': 'Missing coordinates'})
 
                 # Get helper instance
-                helper = self.helper_getter()
-
-                # Check device connection
-                device_connected = False
-                if helper is not None and hasattr(helper, '_controller') and helper._controller is not None:
-                    device_connected = True
-
-                if not device_connected:
-                    try:
-                        from Arknights.configure_launcher import reconnect_helper, get_helper
-                        logger.info('Device not connected, attempting to reconnect...')
-                        reconnect_helper()
-                        helper = get_helper()
-
-                        try:
-                            _ = helper.control
-                            logger.info('Successfully reconnected to device')
-                        except Exception:
-                            return json.dumps({'success': False, 'message': 'No device connected'})
-                    except Exception as reconnect_error:
-                        logger.error(f'Failed to reconnect: {reconnect_error}')
-                        return json.dumps({'success': False,
-                                           'message': f'No device connected. Reconnect failed: {str(reconnect_error)}'})
+                helper, helper_error = self._get_helper_with_reconnect()
+                if helper is None:
+                    return json.dumps({'success': False, 'message': helper_error or 'No device connected'})
 
                 # Perform the click
                 logger.info(f'Simulating click at ({x}, {y})')
@@ -292,6 +349,63 @@ class WebAdmin:
                 })
             except Exception as e:
                 logger.error(f'Error simulating click: {e}')
+                return json.dumps({'success': False, 'message': str(e)})
+
+        @self.app.route('/api/swipe', method='POST')
+        def api_swipe():
+            bottle.response.content_type = 'application/json'
+            try:
+                data = bottle.request.json
+                if not data:
+                    bottle.response.status = 400
+                    return json.dumps({'success': False, 'message': 'Invalid request data'})
+
+                try:
+                    x1 = int(data.get('x1'))
+                    y1 = int(data.get('y1'))
+                    x2 = int(data.get('x2'))
+                    y2 = int(data.get('y2'))
+                    duration = int(data.get('duration', 300))
+                except (TypeError, ValueError):
+                    bottle.response.status = 400
+                    return json.dumps({'success': False, 'message': 'Invalid swipe parameters'})
+
+                if duration < 50 or duration > 5000:
+                    bottle.response.status = 400
+                    return json.dumps({'success': False, 'message': 'Duration must be between 50 and 5000 ms'})
+
+                helper, helper_error = self._get_helper_with_reconnect()
+                if helper is None:
+                    bottle.response.status = 503
+                    return json.dumps({'success': False, 'message': helper_error or 'No device connected'})
+
+                resolution = self._get_device_resolution(helper)
+                if resolution is None:
+                    bottle.response.status = 500
+                    return json.dumps({'success': False, 'message': 'Failed to determine device resolution'})
+
+                width, height = resolution
+                in_bounds = (
+                    0 <= x1 < width and
+                    0 <= y1 < height and
+                    0 <= x2 < width and
+                    0 <= y2 < height
+                )
+                if not in_bounds:
+                    bottle.response.status = 400
+                    return json.dumps({
+                        'success': False,
+                        'message': f'Coordinates out of range (device: {width}x{height})'
+                    })
+
+                helper.control.adb.shell(f'input swipe {x1} {y1} {x2} {y2} {duration}')
+                return json.dumps({
+                    'success': True,
+                    'message': f'Swiped ({x1}, {y1}) -> ({x2}, {y2}) in {duration}ms'
+                })
+            except Exception as e:
+                logger.error(f'Error simulating swipe: {e}')
+                bottle.response.status = 500
                 return json.dumps({'success': False, 'message': str(e)})
 
         @self.app.route('/api/config', method='GET')
@@ -410,6 +524,84 @@ class WebAdmin:
             except Exception as e:
                 logger.error(f'Error updating MAA tasks: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
+
+    def _is_helper_connected(self, helper):
+        return helper is not None and hasattr(helper, '_controller') and helper._controller is not None
+
+    def _get_helper_with_reconnect(self):
+        helper = self.helper_getter()
+        if self._is_helper_connected(helper):
+            return helper, None
+
+        preferred_serial = '127.0.0.1:5555'
+
+        if helper is not None:
+            try:
+                logger.info(f'Device not connected, trying direct connect to {preferred_serial}...')
+                helper.connect_device(adb_serial=preferred_serial)
+                if self._is_helper_connected(helper):
+                    logger.info(f'Successfully connected to {preferred_serial}')
+                    return helper, None
+            except Exception as direct_connect_error:
+                logger.warning(f'Direct connect failed: {direct_connect_error}')
+
+        try:
+            from Arknights.configure_launcher import reconnect_helper, get_helper
+            logger.info('Device not connected, attempting to reconnect...')
+            reconnect_helper()
+            helper = get_helper()
+            if self._is_helper_connected(helper):
+                logger.info('Successfully reconnected to device')
+                return helper, None
+
+            if helper is not None:
+                try:
+                    logger.info(f'Reconnect has no device, trying direct connect to {preferred_serial}...')
+                    helper.connect_device(adb_serial=preferred_serial)
+                    if self._is_helper_connected(helper):
+                        logger.info(f'Successfully connected to {preferred_serial} after reconnect')
+                        return helper, None
+                except Exception as direct_connect_after_reconnect_error:
+                    logger.warning(f'Direct connect after reconnect failed: {direct_connect_after_reconnect_error}')
+
+            return None, f'No device connected ({preferred_serial})'
+        except Exception as reconnect_error:
+            logger.error(f'Failed to reconnect: {reconnect_error}')
+            return None, f'No device connected. Reconnect failed: {str(reconnect_error)}'
+
+    def _get_device_resolution(self, helper):
+        try:
+            screenshot = helper.control.screenshot()
+            width, height = screenshot.size
+            if width > 0 and height > 0:
+                return width, height
+        except Exception as screenshot_error:
+            logger.error(f'Failed to get device resolution from screenshot: {screenshot_error}')
+
+        try:
+            size_text = helper.control.adb.shell('wm size').decode(errors='ignore')
+            size_pattern = re.search(r'Physical size:\s*(\d+)x(\d+)', size_text)
+            if not size_pattern:
+                size_pattern = re.search(r'Override size:\s*(\d+)x(\d+)', size_text)
+            if size_pattern:
+                width = int(size_pattern.group(1))
+                height = int(size_pattern.group(2))
+                if width > 0 and height > 0:
+                    return width, height
+        except Exception as shell_error:
+            logger.warning(f'Failed to get device resolution from wm size: {shell_error}')
+
+        return None
+
+    def _send_stream_status(self, ws, status, message):
+        try:
+            ws.send(json.dumps({
+                'type': 'stream_status',
+                'status': status,
+                'message': message
+            }))
+        except Exception:
+            pass
 
     def _get_status(self):
         """Get current status of scheduler and emulator"""

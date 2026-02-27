@@ -132,12 +132,20 @@
             position: relative;
         }
 
-        .screenshot-container img {
+        .screenshot-target {
             max-width: 100%;
             height: auto;
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             cursor: crosshair;
+        }
+
+        #stream-view {
+            display: none;
+        }
+
+        #stream-canvas {
+            background: #000;
         }
 
         .click-indicator {
@@ -434,6 +442,7 @@
             <h2>屏幕截图</h2>
             <div class="btn-group" style="margin-bottom: 15px;">
                 <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
+                <button class="btn-primary" id="stream-mode-btn" onclick="toggleStreamMode()">📡 实时流</button>
                 <div class="toggle-container">
                     <label class="toggle-switch">
                         <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh()">
@@ -443,7 +452,10 @@
                 </div>
             </div>
             <div class="screenshot-container">
-                <img id="screenshot" src="" alt="点击上方按钮刷新截图" style="display:none;">
+                <div id="stream-view">
+                    <canvas id="stream-canvas" class="screenshot-target"></canvas>
+                </div>
+                <img id="screenshot" class="screenshot-target" src="" alt="点击上方按钮刷新截图" style="display:none;">
                 <div id="screenshot-loading" class="loading">点击上方按钮刷新截图</div>
                 <div id="coordinate-display" class="coordinate-display">X: 0, Y: 0</div>
             </div>
@@ -570,13 +582,257 @@
             }
         }
 
-        async function refreshScreenshot() {
+        let currentScreenMode = 'screenshot';
+        let autoRefreshInterval = null;
+        let streamSupported = false;
+        let streamSocket = null;
+        let streamDecoder = null;
+        let streamReconnectTimer = null;
+        let streamReconnectDelay = 1000;
+        const MAX_STREAM_RECONNECT_DELAY = 30000;
+        let streamTimestampUs = 0;
+        let pendingBuffer = new Uint8Array(0);
+        let cachedSps = null;
+        let cachedPps = null;
+        let gestureStart = null;
+
+        function stopAutoRefreshTimer() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        async function checkWebCodecsSupport() {
+            if (!window.VideoDecoder) {
+                return false;
+            }
+
+            try {
+                const support = await VideoDecoder.isConfigSupported({
+                    codec: 'avc1.42001f',
+                    optimizeForLatency: true
+                });
+                return support && support.supported === true;
+            } catch (error) {
+                console.warn('VideoDecoder.isConfigSupported failed:', error);
+                return false;
+            }
+        }
+
+        function getPointFromEvent(event) {
+            if (event.changedTouches && event.changedTouches.length > 0) {
+                return {
+                    x: event.changedTouches[0].clientX,
+                    y: event.changedTouches[0].clientY
+                };
+            }
+            if (event.touches && event.touches.length > 0) {
+                return {
+                    x: event.touches[0].clientX,
+                    y: event.touches[0].clientY
+                };
+            }
+            return {
+                x: event.clientX,
+                y: event.clientY
+            };
+        }
+
+        function getTargetInfo(source) {
+            if (source === 'stream') {
+                const canvas = document.getElementById('stream-canvas');
+                const width = canvas.width;
+                const height = canvas.height;
+                return { element: canvas, width, height };
+            }
+
+            const img = document.getElementById('screenshot');
+            const width = parseInt(img.dataset.actualWidth || '0', 10);
+            const height = parseInt(img.dataset.actualHeight || '0', 10);
+            return { element: img, width, height };
+        }
+
+        function mapClientToDevice(clientX, clientY, source) {
+            const target = getTargetInfo(source);
+            if (!target.element || target.width <= 0 || target.height <= 0) {
+                return null;
+            }
+
+            const rect = target.element.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) {
+                return null;
+            }
+
+            const contentAspect = target.width / target.height;
+            const rectAspect = rect.width / rect.height;
+            let contentWidth = rect.width;
+            let contentHeight = rect.height;
+            let offsetX = 0;
+            let offsetY = 0;
+
+            if (rectAspect > contentAspect) {
+                contentWidth = rect.height * contentAspect;
+                offsetX = (rect.width - contentWidth) / 2;
+            } else if (rectAspect < contentAspect) {
+                contentHeight = rect.width / contentAspect;
+                offsetY = (rect.height - contentHeight) / 2;
+            }
+
+            const localX = clientX - rect.left - offsetX;
+            const localY = clientY - rect.top - offsetY;
+            if (localX < 0 || localY < 0 || localX > contentWidth || localY > contentHeight) {
+                return null;
+            }
+
+            const normalizedX = Math.min(1, Math.max(0, localX / contentWidth));
+            const normalizedY = Math.min(1, Math.max(0, localY / contentHeight));
+            const x = Math.round(normalizedX * (target.width - 1));
+            const y = Math.round(normalizedY * (target.height - 1));
+            return { x, y };
+        }
+
+        function showClickIndicator(clientX, clientY) {
+            const screenshotContainer = document.querySelector('.screenshot-container');
+            if (!screenshotContainer) {
+                return;
+            }
+
+            const indicator = document.createElement('div');
+            const containerRect = screenshotContainer.getBoundingClientRect();
+            indicator.className = 'click-indicator';
+            indicator.style.left = `${clientX - containerRect.left}px`;
+            indicator.style.top = `${clientY - containerRect.top}px`;
+            screenshotContainer.appendChild(indicator);
+            setTimeout(() => indicator.remove(), 600);
+        }
+
+        async function sendClick(x, y, clientX, clientY) {
+            showClickIndicator(clientX, clientY);
+
+            try {
+                const response = await fetch('/api/click', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ x, y })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage(`✓ 已点击 (${x}, ${y})`, 'success');
+                } else {
+                    showMessage('✗ 点击失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        async function sendSwipe(x1, y1, x2, y2, duration) {
+            try {
+                const response = await fetch('/api/swipe', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ x1, y1, x2, y2, duration })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage(`✓ 已滑动 (${x1}, ${y1}) → (${x2}, ${y2})`, 'success');
+                } else {
+                    showMessage('✗ 滑动失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        function updateCoordinateDisplay(clientX, clientY, source) {
+            const coordDisplay = document.getElementById('coordinate-display');
+            if (!coordDisplay) {
+                return;
+            }
+
+            const mapped = mapClientToDevice(clientX, clientY, source);
+            if (!mapped) {
+                return;
+            }
+            coordDisplay.textContent = `X: ${mapped.x}, Y: ${mapped.y}`;
+        }
+
+        function handleGestureStart(event, source) {
+            if (currentScreenMode !== source) {
+                return;
+            }
+            if (event.type.startsWith('touch')) {
+                event.preventDefault();
+            }
+
+            const point = getPointFromEvent(event);
+            const mapped = mapClientToDevice(point.x, point.y, source);
+            if (!mapped) {
+                gestureStart = null;
+                return;
+            }
+
+            gestureStart = {
+                source,
+                clientX: point.x,
+                clientY: point.y,
+                deviceX: mapped.x,
+                deviceY: mapped.y,
+                timestamp: Date.now()
+            };
+        }
+
+        async function handleGestureEnd(event, source) {
+            if (!gestureStart || gestureStart.source !== source || currentScreenMode !== source) {
+                return;
+            }
+            if (event.type.startsWith('touch')) {
+                event.preventDefault();
+            }
+
+            const start = gestureStart;
+            const point = getPointFromEvent(event);
+            const mapped = mapClientToDevice(point.x, point.y, source);
+            if (!mapped) {
+                gestureStart = null;
+                return;
+            }
+
+            const dx = point.x - start.clientX;
+            const dy = point.y - start.clientY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const elapsed = Date.now() - start.timestamp;
+            gestureStart = null;
+
+            if (distance < 10) {
+                await sendClick(mapped.x, mapped.y, point.x, point.y);
+                return;
+            }
+
+            const duration = Math.min(5000, Math.max(100, elapsed));
+            await sendSwipe(
+                start.deviceX,
+                start.deviceY,
+                mapped.x,
+                mapped.y,
+                duration
+            );
+        }
+
+        async function refreshScreenshot(notify = true) {
+            if (currentScreenMode === 'stream') {
+                return;
+            }
+
             const img = document.getElementById('screenshot');
             const loading = document.getElementById('screenshot-loading');
             const loadingIndicator = document.getElementById('loading-indicator');
-            const coordDisplay = document.getElementById('coordinate-display');
 
-            // Show loading indicator below the image, don't hide the current image
             loadingIndicator.style.display = 'block';
 
             try {
@@ -589,16 +845,16 @@
                     loading.style.display = 'none';
                     loadingIndicator.style.display = 'none';
 
-                    // Store actual screenshot size for coordinate mapping
                     if (data.size) {
                         img.dataset.actualWidth = data.size[0];
                         img.dataset.actualHeight = data.size[1];
                     }
 
-                    showMessage('✓ 截图已刷新', 'success');
+                    if (notify) {
+                        showMessage('✓ 截图已刷新', 'success');
+                    }
                 } else {
                     loadingIndicator.style.display = 'none';
-                    // Only show error in the main loading area if no image is displayed
                     if (img.style.display === 'none') {
                         loading.textContent = '获取截图失败: ' + data.message;
                         loading.style.display = 'block';
@@ -615,84 +871,569 @@
             }
         }
 
-        // Handle screenshot click and coordinates
-        document.addEventListener('DOMContentLoaded', function () {
-            const screenshotImg = document.getElementById('screenshot');
-            const coordDisplay = document.getElementById('coordinate-display');
-            const screenshotContainer = document.querySelector('.screenshot-container');
+        function concatUint8Array(first, second) {
+            const merged = new Uint8Array(first.length + second.length);
+            merged.set(first, 0);
+            merged.set(second, first.length);
+            return merged;
+        }
 
-            if (screenshotImg) {
-                // Update coordinate display on mouse move
-                screenshotImg.addEventListener('mousemove', function (e) {
-                    const rect = screenshotImg.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
+        function packAnnexBNal(payload) {
+            const result = new Uint8Array(payload.length + 4);
+            result[0] = 0;
+            result[1] = 0;
+            result[2] = 0;
+            result[3] = 1;
+            result.set(payload, 4);
+            return result;
+        }
 
-                    // Calculate actual device coordinates
-                    // Default to 1:1 if actual size not yet loaded
-                    const actualW = parseFloat(screenshotImg.dataset.actualWidth) || rect.width;
-                    const actualH = parseFloat(screenshotImg.dataset.actualHeight) || rect.height;
+        function findStartCodePositions(buffer) {
+            const positions = [];
+            for (let i = 0; i < buffer.length - 2; i++) {
+                if (buffer[i] !== 0 || buffer[i + 1] !== 0) {
+                    continue;
+                }
 
-                    const scaleX = actualW / rect.width;
-                    const scaleY = actualH / rect.height;
-
-                    const actualX = Math.round(x * scaleX);
-                    const actualY = Math.round(y * scaleY);
-
-                    if (coordDisplay) {
-                        coordDisplay.textContent = `X: ${actualX}, Y: ${actualY}`;
+                if (buffer[i + 2] === 1) {
+                    if (i === 0 || buffer[i - 1] !== 0) {
+                        positions.push(i);
                     }
-                });
+                    continue;
+                }
 
-                // Handle click
-                screenshotImg.addEventListener('click', async function (e) {
-                    const rect = screenshotImg.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
+                if (i + 3 < buffer.length && buffer[i + 2] === 0 && buffer[i + 3] === 1) {
+                    positions.push(i);
+                    i += 1;
+                }
+            }
+            return positions;
+        }
 
-                    const actualW = parseFloat(screenshotImg.dataset.actualWidth) || rect.width;
-                    const actualH = parseFloat(screenshotImg.dataset.actualHeight) || rect.height;
-
-                    const scaleX = actualW / rect.width;
-                    const scaleY = actualH / rect.height;
-
-                    const actualX = Math.round(x * scaleX);
-                    const actualY = Math.round(y * scaleY);
-
-                    // Show visual feedback
-                    const indicator = document.createElement('div');
-                    indicator.className = 'click-indicator';
-                    indicator.style.left = (e.clientX - screenshotContainer.getBoundingClientRect().left) + 'px';
-                    indicator.style.top = (e.clientY - screenshotContainer.getBoundingClientRect().top) + 'px';
-                    screenshotContainer.appendChild(indicator);
-                    setTimeout(() => indicator.remove(), 600);
-
-                    // Send click to backend
-                    try {
-                        const response = await fetch('/api/click', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                x: actualX,
-                                y: actualY
-                            })
-                        });
-
-                        const data = await response.json();
-                        if (data.success) {
-                            showMessage(`✓ 已点击 (${actualX}, ${actualY})`, 'success');
-                        } else {
-                            showMessage('✗ 点击失败: ' + data.message, 'error');
-                        }
-                    } catch (error) {
-                        showMessage('✗ 请求失败: ' + error.message, 'error');
-                    }
-                });
+        function extractNalUnits(chunk) {
+            pendingBuffer = concatUint8Array(pendingBuffer, chunk);
+            const starts = findStartCodePositions(pendingBuffer);
+            if (starts.length < 2) {
+                if (pendingBuffer.length > 4 * 1024 * 1024) {
+                    pendingBuffer = pendingBuffer.slice(-1024 * 1024);
+                }
+                return [];
             }
 
-            // Handle sanity mode dropdown change
+            const units = [];
+            for (let i = 0; i < starts.length - 1; i++) {
+                units.push(pendingBuffer.slice(starts[i], starts[i + 1]));
+            }
+            pendingBuffer = pendingBuffer.slice(starts[starts.length - 1]);
+            return units;
+        }
+
+        function getNalStartCodeLength(nal) {
+            if (nal.length >= 4 && nal[0] === 0 && nal[1] === 0 && nal[2] === 0 && nal[3] === 1) {
+                return 4;
+            }
+            if (nal.length >= 3 && nal[0] === 0 && nal[1] === 0 && nal[2] === 1) {
+                return 3;
+            }
+            return 0;
+        }
+
+        function stripEmulationPreventionBytes(data) {
+            const out = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i >= 2 && data[i] === 0x03 && data[i - 1] === 0x00 && data[i - 2] === 0x00) {
+                    continue;
+                }
+                out.push(data[i]);
+            }
+            return new Uint8Array(out);
+        }
+
+        class BitReader {
+            constructor(data) {
+                this.data = data;
+                this.byteOffset = 0;
+                this.bitOffset = 0;
+            }
+
+            readBit() {
+                if (this.byteOffset >= this.data.length) {
+                    throw new Error('Unexpected end of SPS');
+                }
+                const value = (this.data[this.byteOffset] >> (7 - this.bitOffset)) & 0x01;
+                this.bitOffset += 1;
+                if (this.bitOffset === 8) {
+                    this.bitOffset = 0;
+                    this.byteOffset += 1;
+                }
+                return value;
+            }
+
+            readBits(count) {
+                let value = 0;
+                for (let i = 0; i < count; i++) {
+                    value = (value << 1) | this.readBit();
+                }
+                return value;
+            }
+
+            readUE() {
+                let zeroCount = 0;
+                while (this.readBit() === 0) {
+                    zeroCount += 1;
+                }
+                let value = 1;
+                for (let i = 0; i < zeroCount; i++) {
+                    value = (value << 1) | this.readBit();
+                }
+                return value - 1;
+            }
+
+            readSE() {
+                const ueValue = this.readUE();
+                if ((ueValue & 1) === 0) {
+                    return -(ueValue / 2);
+                }
+                return (ueValue + 1) / 2;
+            }
+        }
+
+        function parseSpsResolution(spsNalPayload) {
+            if (!spsNalPayload || spsNalPayload.length < 4) {
+                throw new Error('Invalid SPS payload');
+            }
+
+            const rbsp = stripEmulationPreventionBytes(spsNalPayload.slice(1));
+            const reader = new BitReader(rbsp);
+
+            const profileIdc = reader.readBits(8);
+            reader.readBits(8);
+            reader.readBits(8);
+            reader.readUE();
+
+            let chromaFormatIdc = 1;
+            if ([100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135].includes(profileIdc)) {
+                chromaFormatIdc = reader.readUE();
+                if (chromaFormatIdc === 3) {
+                    reader.readBit();
+                }
+                reader.readUE();
+                reader.readUE();
+                reader.readBit();
+                const seqScalingMatrixPresentFlag = reader.readBit();
+                if (seqScalingMatrixPresentFlag) {
+                    const scalingListCount = chromaFormatIdc !== 3 ? 8 : 12;
+                    for (let i = 0; i < scalingListCount; i++) {
+                        const scalingListPresentFlag = reader.readBit();
+                        if (!scalingListPresentFlag) {
+                            continue;
+                        }
+                        const sizeOfScalingList = i < 6 ? 16 : 64;
+                        let lastScale = 8;
+                        let nextScale = 8;
+                        for (let j = 0; j < sizeOfScalingList; j++) {
+                            if (nextScale !== 0) {
+                                const deltaScale = reader.readSE();
+                                nextScale = (lastScale + deltaScale + 256) % 256;
+                            }
+                            lastScale = nextScale === 0 ? lastScale : nextScale;
+                        }
+                    }
+                }
+            }
+
+            reader.readUE();
+            const picOrderCntType = reader.readUE();
+            if (picOrderCntType === 0) {
+                reader.readUE();
+            } else if (picOrderCntType === 1) {
+                reader.readBit();
+                reader.readSE();
+                reader.readSE();
+                const cycleCount = reader.readUE();
+                for (let i = 0; i < cycleCount; i++) {
+                    reader.readSE();
+                }
+            }
+
+            reader.readUE();
+            reader.readBit();
+            const picWidthInMbsMinus1 = reader.readUE();
+            const picHeightInMapUnitsMinus1 = reader.readUE();
+            const frameMbsOnlyFlag = reader.readBit();
+            if (frameMbsOnlyFlag === 0) {
+                reader.readBit();
+            }
+
+            reader.readBit();
+            const frameCroppingFlag = reader.readBit();
+            let frameCropLeft = 0;
+            let frameCropRight = 0;
+            let frameCropTop = 0;
+            let frameCropBottom = 0;
+
+            if (frameCroppingFlag) {
+                frameCropLeft = reader.readUE();
+                frameCropRight = reader.readUE();
+                frameCropTop = reader.readUE();
+                frameCropBottom = reader.readUE();
+            }
+
+            let width = (picWidthInMbsMinus1 + 1) * 16;
+            let height = (2 - frameMbsOnlyFlag) * (picHeightInMapUnitsMinus1 + 1) * 16;
+
+            let cropUnitX = 1;
+            let cropUnitY = 2 - frameMbsOnlyFlag;
+            if (chromaFormatIdc === 1) {
+                cropUnitX = 2;
+                cropUnitY = 2 * (2 - frameMbsOnlyFlag);
+            } else if (chromaFormatIdc === 2) {
+                cropUnitX = 2;
+                cropUnitY = 2 - frameMbsOnlyFlag;
+            }
+
+            width -= (frameCropLeft + frameCropRight) * cropUnitX;
+            height -= (frameCropTop + frameCropBottom) * cropUnitY;
+            return { width, height };
+        }
+
+        function createDecoderIfNeeded() {
+            if (streamDecoder && streamDecoder.state !== 'closed') {
+                return;
+            }
+
+            const canvas = document.getElementById('stream-canvas');
+            const ctx = canvas.getContext('2d');
+            streamDecoder = new VideoDecoder({
+                output: frame => {
+                    ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+                    frame.close();
+                },
+                error: error => {
+                    console.error('VideoDecoder error:', error);
+                }
+            });
+        }
+
+        function configureFromSps(spsData) {
+            if (!spsData || spsData.length < 4) {
+                return;
+            }
+
+            const profileIdc = spsData[1];
+            const constraintFlags = spsData[2];
+            const levelIdc = spsData[3];
+            const codec = `avc1.${profileIdc.toString(16).padStart(2, '0')}${constraintFlags.toString(16).padStart(2, '0')}${levelIdc.toString(16).padStart(2, '0')}`;
+            const resolution = parseSpsResolution(spsData);
+
+            const canvas = document.getElementById('stream-canvas');
+            canvas.width = resolution.width;
+            canvas.height = resolution.height;
+            canvas.dataset.actualWidth = String(resolution.width);
+            canvas.dataset.actualHeight = String(resolution.height);
+
+            createDecoderIfNeeded();
+            const baseConfig = {
+                codec: codec,
+                codedWidth: resolution.width,
+                codedHeight: resolution.height,
+                optimizeForLatency: true
+            };
+
+            try {
+                streamDecoder.configure({
+                    ...baseConfig,
+                    avc: { format: 'annexb' }
+                });
+            } catch (error) {
+                console.warn('Decoder configure with annexb failed, retrying without avc hint:', error);
+                streamDecoder.configure(baseConfig);
+            }
+        }
+
+        function closeStreamDecoder() {
+            if (streamDecoder && streamDecoder.state !== 'closed') {
+                try {
+                    streamDecoder.close();
+                } catch (error) {
+                    console.warn('Failed to close decoder:', error);
+                }
+            }
+            streamDecoder = null;
+        }
+
+        function closeStreamSocket() {
+            if (streamSocket) {
+                try {
+                    streamSocket.onopen = null;
+                    streamSocket.onmessage = null;
+                    streamSocket.onclose = null;
+                    streamSocket.onerror = null;
+                    streamSocket.close();
+                } catch (error) {
+                    console.warn('Failed to close stream socket:', error);
+                }
+            }
+            streamSocket = null;
+        }
+
+        function handleStreamStatusMessage(messageText) {
+            try {
+                const payload = JSON.parse(messageText);
+                if (payload.type === 'stream_status' && payload.status === 'fallback') {
+                    showMessage(`✗ 实时流不可用，已降级到截图模式: ${payload.message}`, 'error');
+                    stopStreamMode(true);
+                } else if (payload.type === 'stream_status' && payload.status === 'error') {
+                    showMessage('✗ ' + payload.message, 'error');
+                }
+            } catch (error) {
+                console.warn('Failed to parse stream status message:', error);
+            }
+        }
+
+        function processNalUnit(nal) {
+            const startCodeLength = getNalStartCodeLength(nal);
+            if (startCodeLength === 0 || nal.length <= startCodeLength) {
+                return;
+            }
+
+            const payload = nal.slice(startCodeLength);
+            const nalType = payload[0] & 0x1f;
+
+            if (nalType === 7) {
+                cachedSps = payload;
+                try {
+                    configureFromSps(payload);
+                } catch (error) {
+                    console.error('Failed to configure decoder from SPS:', error);
+                }
+                return;
+            }
+
+            if (nalType === 8) {
+                cachedPps = payload;
+                return;
+            }
+
+            if (nalType !== 1 && nalType !== 5) {
+                return;
+            }
+
+            if (!streamDecoder || streamDecoder.state !== 'configured') {
+                if (cachedSps) {
+                    try {
+                        configureFromSps(cachedSps);
+                    } catch (error) {
+                        console.error('Failed to lazily configure decoder:', error);
+                    }
+                }
+                if (!streamDecoder || streamDecoder.state !== 'configured') {
+                    return;
+                }
+            }
+
+            streamTimestampUs += 33333;
+            try {
+                let chunkData = nal;
+                if (nalType === 5 && cachedSps && cachedPps) {
+                    chunkData = concatUint8Array(
+                        concatUint8Array(packAnnexBNal(cachedSps), packAnnexBNal(cachedPps)),
+                        nal
+                    );
+                }
+                const chunk = new EncodedVideoChunk({
+                    type: nalType === 5 ? 'key' : 'delta',
+                    timestamp: streamTimestampUs,
+                    data: chunkData
+                });
+                streamDecoder.decode(chunk);
+            } catch (error) {
+                console.error('Failed to decode NAL unit:', error);
+            }
+        }
+
+        function parseAndDecode(arrayBuffer) {
+            const chunk = new Uint8Array(arrayBuffer);
+            const units = extractNalUnits(chunk);
+            units.forEach(processNalUnit);
+        }
+
+        function scheduleStreamReconnect() {
+            if (currentScreenMode !== 'stream') {
+                return;
+            }
+            if (streamReconnectTimer) {
+                clearTimeout(streamReconnectTimer);
+            }
+            const delay = streamReconnectDelay;
+            streamReconnectTimer = setTimeout(connectStream, delay);
+            streamReconnectDelay = Math.min(streamReconnectDelay * 2, MAX_STREAM_RECONNECT_DELAY);
+        }
+
+        function connectStream() {
+            if (currentScreenMode !== 'stream') {
+                return;
+            }
+
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const wsUrl = `${wsProtocol}://${window.location.host}/api/screen/ws`;
+            closeStreamSocket();
+
+            streamSocket = new WebSocket(wsUrl);
+            streamSocket.binaryType = 'arraybuffer';
+
+            streamSocket.onopen = function () {
+                streamReconnectDelay = 1000;
+                if (streamReconnectTimer) {
+                    clearTimeout(streamReconnectTimer);
+                    streamReconnectTimer = null;
+                }
+            };
+
+            streamSocket.onmessage = function (event) {
+                if (typeof event.data === 'string') {
+                    handleStreamStatusMessage(event.data);
+                    return;
+                }
+                parseAndDecode(event.data);
+            };
+
+            streamSocket.onclose = function () {
+                scheduleStreamReconnect();
+            };
+
+            streamSocket.onerror = function (error) {
+                console.error('Stream websocket error:', error);
+                if (streamSocket) {
+                    streamSocket.close();
+                }
+            };
+        }
+
+        function startStreamMode() {
+            if (!streamSupported) {
+                showMessage('✗ 当前浏览器不支持 WebCodecs H.264 解码', 'error');
+                return;
+            }
+
+            currentScreenMode = 'stream';
+            pendingBuffer = new Uint8Array(0);
+            cachedSps = null;
+            cachedPps = null;
+            streamTimestampUs = 0;
+
+            stopAutoRefreshTimer();
+            const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+            if (autoRefreshToggle) {
+                autoRefreshToggle.checked = false;
+            }
+
+            document.getElementById('stream-view').style.display = 'block';
+            document.getElementById('screenshot').style.display = 'none';
+            document.getElementById('screenshot-loading').style.display = 'none';
+            document.getElementById('stream-mode-btn').textContent = '🖼️ 截图模式';
+
+            connectStream();
+        }
+
+        function stopStreamMode(silent = false) {
+            if (streamReconnectTimer) {
+                clearTimeout(streamReconnectTimer);
+                streamReconnectTimer = null;
+            }
+
+            closeStreamSocket();
+            closeStreamDecoder();
+            pendingBuffer = new Uint8Array(0);
+            cachedSps = null;
+            cachedPps = null;
+            streamTimestampUs = 0;
+            currentScreenMode = 'screenshot';
+
+            document.getElementById('stream-view').style.display = 'none';
+            document.getElementById('stream-mode-btn').textContent = '📡 实时流';
+
+            const screenshotImg = document.getElementById('screenshot');
+            if (screenshotImg.src) {
+                screenshotImg.style.display = 'block';
+            } else {
+                document.getElementById('screenshot-loading').style.display = 'block';
+            }
+
+            if (!silent) {
+                showMessage('✓ 已切换到截图模式', 'success');
+            }
+        }
+
+        function toggleStreamMode() {
+            if (currentScreenMode === 'stream') {
+                stopStreamMode();
+                return;
+            }
+            startStreamMode();
+        }
+
+        function toggleAutoRefresh() {
+            const toggle = document.getElementById('auto-refresh-toggle');
+            if (!toggle) {
+                return;
+            }
+
+            if (currentScreenMode === 'stream') {
+                toggle.checked = false;
+                showMessage('✗ 实时流模式下不能启用截图自动刷新', 'error');
+                return;
+            }
+
+            if (toggle.checked) {
+                refreshScreenshot(false);
+                autoRefreshInterval = setInterval(() => refreshScreenshot(false), 3000);
+                showMessage('✓ 自动刷新已启用 (每3秒)', 'success');
+            } else {
+                stopAutoRefreshTimer();
+                showMessage('✓ 自动刷新已关闭', 'success');
+            }
+        }
+
+        function bindInteraction(targetElement, source) {
+            if (!targetElement) {
+                return;
+            }
+
+            targetElement.addEventListener('mousemove', event => {
+                if (currentScreenMode !== source) {
+                    return;
+                }
+                const point = getPointFromEvent(event);
+                updateCoordinateDisplay(point.x, point.y, source);
+            });
+
+            targetElement.addEventListener('mousedown', event => handleGestureStart(event, source));
+            targetElement.addEventListener('mouseup', event => handleGestureEnd(event, source));
+            targetElement.addEventListener('mouseleave', () => {
+                gestureStart = null;
+            });
+
+            targetElement.addEventListener('touchstart', event => handleGestureStart(event, source), { passive: false });
+            targetElement.addEventListener('touchend', event => handleGestureEnd(event, source), { passive: false });
+            targetElement.addEventListener('touchcancel', () => {
+                gestureStart = null;
+            }, { passive: false });
+        }
+
+        document.addEventListener('DOMContentLoaded', async function () {
+            const screenshotImg = document.getElementById('screenshot');
+            const streamCanvas = document.getElementById('stream-canvas');
+            const streamButton = document.getElementById('stream-mode-btn');
+
+            bindInteraction(screenshotImg, 'screenshot');
+            bindInteraction(streamCanvas, 'stream');
+
+            streamSupported = await checkWebCodecsSupport();
+            if (!streamSupported && streamButton) {
+                streamButton.style.display = 'none';
+            }
+
             const sanityModeSelect = document.getElementById('sanity-mode-select');
             const customStageInput = document.getElementById('custom-stage-input');
 
@@ -706,7 +1447,6 @@
                 });
             }
 
-            // Initial load
             loadConfig();
             loadMaaTasks();
         });
@@ -967,27 +1707,6 @@
             } catch (error) {
                 console.error('Error saving MAA tasks:', error);
                 showMessage('✗ 请求失败: ' + error.message, 'error');
-            }
-        }
-
-        // Auto-refresh screenshot functionality
-        let autoRefreshInterval = null;
-
-        function toggleAutoRefresh() {
-            const toggle = document.getElementById('auto-refresh-toggle');
-
-            if (toggle.checked) {
-                // Enable auto-refresh
-                refreshScreenshot(); // Refresh immediately
-                autoRefreshInterval = setInterval(refreshScreenshot, 3000); // Then every 3 seconds
-                showMessage('✓ 自动刷新已启用 (每3秒)', 'success');
-            } else {
-                // Disable auto-refresh
-                if (autoRefreshInterval) {
-                    clearInterval(autoRefreshInterval);
-                    autoRefreshInterval = null;
-                }
-                showMessage('✓ 自动刷新已关闭', 'success');
             }
         }
 
