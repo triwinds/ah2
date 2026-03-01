@@ -450,7 +450,7 @@ def maa_startup_with_retry(
             logger.info(f"MAA startup with retry attempt {attempt + 1}/{max_retry}")
             from Arknights.addons.contrib.maa.maa_cli import maa_startup
 
-            maa_startup(timeout=300)
+            maa_startup(timeout=600)
 
             # Wait for the game to fully start
             time.sleep(10)
