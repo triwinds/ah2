@@ -141,12 +141,17 @@ class WebAdmin:
 
             try:
                 while True:
+                    if getattr(ws, 'closed', False):
+                        return
+
                     helper, helper_error = self._get_helper_with_reconnect()
                     if helper is None:
                         consecutive_failures += 1
                         logger.error(f'No connected device for screen stream ({consecutive_failures}/3): {helper_error}')
                         if consecutive_failures >= 3:
                             self._send_stream_status(ws, 'fallback', helper_error or 'No device connected')
+                            return
+                        if getattr(ws, 'closed', False):
                             return
                         time.sleep(min(2 ** (consecutive_failures - 1), 5))
                         continue
@@ -159,6 +164,8 @@ class WebAdmin:
                         if consecutive_failures >= 3:
                             self._send_stream_status(ws, 'fallback', f'screenrecord unavailable: {stream_error}')
                             return
+                        if getattr(ws, 'closed', False):
+                            return
                         time.sleep(min(2 ** (consecutive_failures - 1), 5))
                         continue
 
@@ -166,10 +173,14 @@ class WebAdmin:
 
                     try:
                         while True:
+                            if getattr(ws, 'closed', False):
+                                return
                             chunk = sock.recv(4096)
                             if not chunk:
                                 # screenrecord exits when --time-limit is reached; restart immediately
                                 break
+                            if getattr(ws, 'closed', False):
+                                return
                             ws.send(chunk)
                     except Exception as stream_loop_error:
                         logger.info(f'Screen stream websocket closed: {stream_loop_error}')

@@ -589,12 +589,14 @@
         let streamDecoder = null;
         let streamReconnectTimer = null;
         let streamReconnectDelay = 1000;
+        let streamShutdownRequested = false;
         const MAX_STREAM_RECONNECT_DELAY = 30000;
         let streamTimestampUs = 0;
         let pendingBuffer = new Uint8Array(0);
         let cachedSps = null;
         let cachedPps = null;
         let gestureStart = null;
+        let pageTeardownRequested = false;
 
         function stopAutoRefreshTimer() {
             if (autoRefreshInterval) {
@@ -1259,7 +1261,7 @@
         }
 
         function scheduleStreamReconnect() {
-            if (currentScreenMode !== 'stream') {
+            if (currentScreenMode !== 'stream' || streamShutdownRequested) {
                 return;
             }
             if (streamReconnectTimer) {
@@ -1271,7 +1273,7 @@
         }
 
         function connectStream() {
-            if (currentScreenMode !== 'stream') {
+            if (currentScreenMode !== 'stream' || streamShutdownRequested) {
                 return;
             }
 
@@ -1299,6 +1301,9 @@
             };
 
             streamSocket.onclose = function () {
+                if (streamShutdownRequested) {
+                    return;
+                }
                 scheduleStreamReconnect();
             };
 
@@ -1316,6 +1321,7 @@
                 return;
             }
 
+            streamShutdownRequested = false;
             currentScreenMode = 'stream';
             pendingBuffer = new Uint8Array(0);
             cachedSps = null;
@@ -1337,6 +1343,7 @@
         }
 
         function stopStreamMode(silent = false) {
+            streamShutdownRequested = true;
             if (streamReconnectTimer) {
                 clearTimeout(streamReconnectTimer);
                 streamReconnectTimer = null;
@@ -1548,6 +1555,7 @@
         const logTerminal = document.getElementById('log-terminal');
         const wsStatus = document.getElementById('ws-status');
         let reconnectTimer = null;
+        let logWsShutdownRequested = false;
         let currentLogType = 'system'; // 'system' or 'maa'
         let allLogs = []; // Store all logs to filter on client side
 
@@ -1570,7 +1578,30 @@
             displayFilteredLogs();
         }
 
+        function closeLogWebSocket() {
+            if (reconnectTimer) {
+                clearInterval(reconnectTimer);
+                reconnectTimer = null;
+            }
+            if (ws) {
+                try {
+                    ws.onopen = null;
+                    ws.onmessage = null;
+                    ws.onclose = null;
+                    ws.onerror = null;
+                    ws.close();
+                } catch (error) {
+                    console.warn('Failed to close log websocket:', error);
+                }
+            }
+            ws = null;
+        }
+
         function connectWebSocket() {
+            if (logWsShutdownRequested) {
+                return;
+            }
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/api/logs/ws`;
 
@@ -1606,6 +1637,9 @@
 
             ws.onclose = function () {
                 if (wsStatus) wsStatus.innerHTML = '<span class="status-offline">🔴 已断开</span>';
+                if (logWsShutdownRequested || pageTeardownRequested) {
+                    return;
+                }
                 if (!reconnectTimer) {
                     reconnectTimer = setInterval(connectWebSocket, 3000);
                 }
@@ -1613,7 +1647,9 @@
 
             ws.onerror = function (error) {
                 console.error('WebSocket error:', error);
-                ws.close();
+                if (ws) {
+                    ws.close();
+                }
             };
         }
 
@@ -1658,6 +1694,27 @@
                 allLogs = [];
             }
         }
+
+        function handlePageTeardown() {
+            if (pageTeardownRequested) {
+                return;
+            }
+            pageTeardownRequested = true;
+            streamShutdownRequested = true;
+            logWsShutdownRequested = true;
+
+            if (currentScreenMode === 'stream') {
+                stopStreamMode(true);
+            } else {
+                closeStreamSocket();
+                closeStreamDecoder();
+            }
+
+            closeLogWebSocket();
+        }
+
+        window.addEventListener('beforeunload', handlePageTeardown);
+        window.addEventListener('pagehide', handlePageTeardown);
 
         // Initialize WebSocket
         if (document.getElementById('log-terminal')) {
