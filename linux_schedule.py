@@ -25,12 +25,14 @@ from imgreco.itemdb import update_net
 from Arknights.addons.contrib.maa import maa_rouge_like, shutdown_maa
 from Arknights.addons.contrib.emulator_manager import restart_all, check_emulator_is_alive, close_emulator
 from common_config import common_config
+from util.task_lock import task_execution_lock
 from web_admin import WebAdmin
 
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None  # Will be initialized in main()
 grab_red_ticket = False
 CONFIG_FILE = Path(__file__).parent / 'config.json'
+TASK_EXECUTION_LOCK_FILE = app.cache_path.joinpath('schedule_do_works.lock')
 
 
 def load_config_from_file():
@@ -191,41 +193,46 @@ def send_summary(loots, stage_count, common_task_result):
 
 def do_works():
     global helper
-    shutdown_maa()
-    update_cache()
+    with task_execution_lock(TASK_EXECUTION_LOCK_FILE) as acquired:
+        if not acquired:
+            logger.warning('Skip do_works: another task execution is still in progress.')
+            return
 
-    # 重启 adb server, 以免产生奇怪的 bug
-    try:
-        os.system('adb kill-server')
-        if not check_emulator_is_alive():
-            restart_all()
-        reconnect_helper()
-        helper = get_helper()
-        helper.set_extra_delay(3)
-        update_net()
-        logger.info(f'run schedule at {datetime.now()}')
-        clear_sanity()
-        from Arknights.addons.combat import CombatAddon
-        loots = helper.addon(CombatAddon).loots
-        stage_count = helper.addon(CombatAddon).stage_count
-        common_task_result = common_task.main()
-        logger.info(f'finish at: {datetime.now()}')
-        send_summary(loots, stage_count, common_task_result)
-        time.sleep(60)
-        from Arknights.addons.common import CommonAddon
-        if common_config.rouge_like:
-            helper.addon(CommonAddon).back_to_main()
-            maa_rouge_like('Sami')
-        else:
-            try:
-                helper.addon(CommonAddon).exit_game()
-            finally:
-                close_emulator()
-    except Exception as e:
-        from util.msg_sender import send_by_tg_bot
-        send_by_tg_bot('arh-fail', traceback.format_exc())
-        print(traceback.format_exc())
-        close_emulator()
+        shutdown_maa()
+        update_cache()
+
+        # 重启 adb server, 以免产生奇怪的 bug
+        try:
+            os.system('adb kill-server')
+            if not check_emulator_is_alive():
+                restart_all()
+            reconnect_helper()
+            helper = get_helper()
+            helper.set_extra_delay(3)
+            update_net()
+            logger.info(f'run schedule at {datetime.now()}')
+            clear_sanity()
+            from Arknights.addons.combat import CombatAddon
+            loots = helper.addon(CombatAddon).loots
+            stage_count = helper.addon(CombatAddon).stage_count
+            common_task_result = common_task.main()
+            logger.info(f'finish at: {datetime.now()}')
+            send_summary(loots, stage_count, common_task_result)
+            time.sleep(60)
+            from Arknights.addons.common import CommonAddon
+            if common_config.rouge_like:
+                helper.addon(CommonAddon).back_to_main()
+                maa_rouge_like('Sami')
+            else:
+                try:
+                    helper.addon(CommonAddon).exit_game()
+                finally:
+                    close_emulator()
+        except Exception as e:
+            from util.msg_sender import send_by_tg_bot
+            send_by_tg_bot('arh-fail', traceback.format_exc())
+            print(traceback.format_exc())
+            close_emulator()
 
 
 def recruit():

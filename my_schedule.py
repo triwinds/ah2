@@ -19,10 +19,12 @@ from imgreco.itemdb import update_net
 from Arknights.addons.contrib.maa import maa_rouge_like, shutdown_maa
 from Arknights.addons.contrib.emulator_manager import restart_all, check_bluestacks_is_alive, close_bluestacks
 from common_config import common_config
+from util.task_lock import task_execution_lock
 
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None
 grab_red_ticket = False
+TASK_EXECUTION_LOCK_FILE = app.cache_path.joinpath('schedule_do_works.lock')
 
 
 def do_jiaomie():
@@ -78,31 +80,36 @@ def clear_sanity_by_item(only_activity=False):
 
 def do_works():
     global helper
-    shutdown_maa()
-    update_cache()
-    # 重启 adb server, 以免产生奇怪的 bug
-    try:
-        os.system('adb kill-server')
-        if not check_bluestacks_is_alive():
-            restart_all()
-        reconnect_helper()
-        helper = get_helper()
-        update_net()
-        logger.info(f'run schedule at {datetime.now()}')
-        clear_sanity()
-        common_task.main()
-        logger.info(f'finish at: {datetime.now()}')
-        time.sleep(60)
-        if common_config.rouge_like:
-            from Arknights.addons.common import CommonAddon
-            helper.addon(CommonAddon).back_to_main()
-            maa_rouge_like('Sami')
-        else:
-            close_bluestacks()
-    except Exception as e:
-        from util.msg_sender import send_by_tg_bot
-        send_by_tg_bot('arh-fail', traceback.format_exc())
-        print(traceback.format_exc())
+    with task_execution_lock(TASK_EXECUTION_LOCK_FILE) as acquired:
+        if not acquired:
+            logger.warning('Skip do_works: another task execution is still in progress.')
+            return
+
+        shutdown_maa()
+        update_cache()
+        # 重启 adb server, 以免产生奇怪的 bug
+        try:
+            os.system('adb kill-server')
+            if not check_bluestacks_is_alive():
+                restart_all()
+            reconnect_helper()
+            helper = get_helper()
+            update_net()
+            logger.info(f'run schedule at {datetime.now()}')
+            clear_sanity()
+            common_task.main()
+            logger.info(f'finish at: {datetime.now()}')
+            time.sleep(60)
+            if common_config.rouge_like:
+                from Arknights.addons.common import CommonAddon
+                helper.addon(CommonAddon).back_to_main()
+                maa_rouge_like('Sami')
+            else:
+                close_bluestacks()
+        except Exception as e:
+            from util.msg_sender import send_by_tg_bot
+            send_by_tg_bot('arh-fail', traceback.format_exc())
+            print(traceback.format_exc())
 
 
 def recruit():
