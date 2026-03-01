@@ -341,7 +341,7 @@
         <div class="card">
             <h2>控制面板</h2>
             <div class="btn-group">
-                <button class="btn-primary" onclick="triggerTask()">🚀 立即执行任务</button>
+                <button class="btn-primary" id="trigger-task-btn" onclick="triggerTask()">🚀 立即执行任务</button>
                 <button class="btn-success" onclick="startEmulator()">▶️ 启动模拟器</button>
                 <button class="btn-danger" onclick="stopEmulator()">⏹️ 关闭模拟器</button>
             </div>
@@ -523,17 +523,35 @@
         }
 
         async function triggerTask() {
+            if (window.__triggerTaskPending) {
+                showMessage('✓ 任务已在触发中，请勿重复点击', 'success');
+                return;
+            }
+
+            const triggerBtn = document.getElementById('trigger-task-btn');
+            window.__triggerTaskPending = true;
+            if (triggerBtn) {
+                triggerBtn.disabled = true;
+                triggerBtn.textContent = '⏳ 触发中...';
+            }
+
             try {
                 const response = await fetch('/api/trigger', { method: 'POST' });
                 const data = await response.json();
                 if (data.success) {
-                    showMessage('✓ 任务已触发', 'success');
+                    showMessage('✓ ' + (data.message || '任务已触发'), 'success');
                     updateStatus();
                 } else {
                     showMessage('✗ 触发失败: ' + data.message, 'error');
                 }
             } catch (error) {
                 showMessage('✗ 请求失败: ' + error.message, 'error');
+            } finally {
+                window.__triggerTaskPending = false;
+                if (triggerBtn) {
+                    triggerBtn.disabled = false;
+                    triggerBtn.textContent = '🚀 立即执行任务';
+                }
             }
         }
 

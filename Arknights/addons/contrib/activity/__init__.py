@@ -157,7 +157,8 @@ class ActivityAddOn(AddonBase):
             return not res.get('error', False)
 
     def _run(self, target_stage_code, query_only=False):
-        self.logger.info(f'准备前往 {target_stage_code}')
+        if not query_only:
+            self.logger.info(f'准备前往 {target_stage_code}')
         target_stage_code = target_stage_code.upper()
         try:
             target_stage, stage_linear = get_stage(target_stage_code)

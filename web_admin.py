@@ -10,7 +10,7 @@ import time
 import base64
 import collections
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,8 @@ class WebAdmin:
         self.max_screen_stream_connections = 2
         self._screen_stream_connections = 0
         self._screen_stream_lock = threading.Lock()
+        self._trigger_lock = threading.Lock()
+        self._last_manual_trigger_time = None
 
         # Setup logging handler
         self.log_handler = MemoryLogHandler()
@@ -231,13 +233,30 @@ class WebAdmin:
         def api_trigger():
             bottle.response.content_type = 'application/json'
             try:
-                # Trigger do_works job immediately
-                job = self.scheduler.get_job('do_works')
-                if job:
-                    job.modify(next_run_time=datetime.now())
-                    return json.dumps({'success': True, 'message': 'Task triggered successfully'})
-                else:
-                    return json.dumps({'success': False, 'message': 'Job not found'})
+                with self._trigger_lock:
+                    # Trigger do_works job immediately.
+                    # Protect against fast duplicate submissions from web UI retries/double clicks.
+                    now = datetime.now(self.scheduler.timezone)
+                    if (
+                        self._last_manual_trigger_time is not None
+                        and now - self._last_manual_trigger_time < timedelta(seconds=3)
+                    ):
+                        logger.info('Ignore duplicate manual trigger request within 3 seconds window.')
+                        return json.dumps({'success': True, 'message': '任务已在触发中，请勿重复点击'})
+
+                    job = self.scheduler.get_job('do_works')
+                    if not job:
+                        return json.dumps({'success': False, 'message': 'Job not found'})
+
+                    # If next run is already imminent, treat this request as duplicate.
+                    if job.next_run_time is not None and job.next_run_time <= now + timedelta(seconds=2):
+                        logger.info(f'Ignore duplicate manual trigger request, next run already queued at {job.next_run_time}.')
+                        return json.dumps({'success': True, 'message': '任务已排队执行'})
+
+                    job.modify(next_run_time=now)
+                    self._last_manual_trigger_time = now
+                    logger.info(f'Manual trigger accepted, do_works next_run_time={now}')
+                    return json.dumps({'success': True, 'message': '任务触发成功'})
             except Exception as e:
                 logger.error(f'Error triggering task: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
