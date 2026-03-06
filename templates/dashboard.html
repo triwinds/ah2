@@ -348,6 +348,23 @@
         </div>
 
         <div class="card">
+            <h2>📱 设备切换</h2>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+                <select id="device-select"
+                    style="flex: 1; min-width: 260px; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em; background: white;">
+                    <option value="">选择已检测设备…</option>
+                </select>
+                <input type="text" id="device-input" placeholder="输入 device，如 127.0.0.1:5555 或 emulator-5554"
+                    style="flex: 1; min-width: 260px; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em;">
+                <button class="btn-primary" id="switch-device-btn" onclick="switchDevice()">🔌 切换设备</button>
+            </div>
+            <div style="color: #666; line-height: 1.8;">
+                <div id="device-current">当前设备：加载中...</div>
+                <div id="device-preferred">默认 device：加载中...</div>
+            </div>
+        </div>
+
+        <div class="card">
             <h2>⚙️ 配置管理</h2>
             <div id="config-form">
                 <div style="margin-bottom: 20px;">
@@ -474,6 +491,68 @@
             setTimeout(() => message.remove(), 5000);
         }
 
+        function renderDeviceInfo(data) {
+            const currentElement = document.getElementById('device-current');
+            const preferredElement = document.getElementById('device-preferred');
+            const inputElement = document.getElementById('device-input');
+
+            const configuredDevice = data && data.configured_device ? data.configured_device : '127.0.0.1:5555';
+            const currentText = data && data.connected && data.device
+                ? `当前设备：${data.device}`
+                : `当前设备：${(data && data.message) || '未连接'}`;
+
+            if (currentElement) {
+                currentElement.textContent = currentText;
+            }
+
+            if (preferredElement) {
+                preferredElement.textContent = `默认 device：${configuredDevice}`;
+            }
+
+            renderDetectedDevices(data && data.detected_devices, configuredDevice);
+
+            if (inputElement && !inputElement.value.trim()) {
+                inputElement.value = configuredDevice;
+            }
+        }
+
+        function renderDetectedDevices(devices, configuredDevice) {
+            const selectElement = document.getElementById('device-select');
+            if (!selectElement) {
+                return;
+            }
+
+            const options = Array.isArray(devices) ? devices : [];
+            selectElement.innerHTML = '<option value="">选择已检测设备…</option>';
+
+            for (const item of options) {
+                if (!item || !item.value) {
+                    continue;
+                }
+                const option = document.createElement('option');
+                option.value = item.value;
+                option.textContent = item.label || item.value;
+                if (configuredDevice && item.value === configuredDevice) {
+                    option.selected = true;
+                }
+                selectElement.appendChild(option);
+            }
+        }
+
+        async function loadDeviceInfo() {
+            try {
+                const response = await fetch('/api/device');
+                const data = await response.json();
+                renderDeviceInfo(data);
+            } catch (error) {
+                renderDeviceInfo({
+                    connected: false,
+                    message: '获取设备信息失败: ' + error.message,
+                    configured_device: '127.0.0.1:5555'
+                });
+            }
+        }
+
         async function updateStatus() {
             try {
                 const response = await fetch('/api/status');
@@ -496,6 +575,13 @@
                     data.device_connected
                         ? '<span class="status-online">已连接 ✓</span>'
                         : '<span class="status-offline">未连接 ✗</span>';
+
+                if (!data.device_connected) {
+                    const currentElement = document.getElementById('device-current');
+                    if (currentElement) {
+                        currentElement.textContent = '当前设备：未连接';
+                    }
+                }
 
                 // Update jobs list
                 const jobsList = document.getElementById('jobs-list');
@@ -597,6 +683,56 @@
                 }
             } catch (error) {
                 showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        async function switchDevice() {
+            const inputElement = document.getElementById('device-input');
+            const buttonElement = document.getElementById('switch-device-btn');
+            const device = inputElement ? inputElement.value.trim() : '';
+
+            if (!device) {
+                showMessage('✗ 请输入 device', 'error');
+                return;
+            }
+
+            if (buttonElement) {
+                buttonElement.disabled = true;
+                buttonElement.textContent = '⏳ 连接中...';
+            }
+
+            try {
+                const response = await fetch('/api/device', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ device })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    if (inputElement) {
+                        inputElement.value = data.configured_device || device;
+                    }
+                    renderDeviceInfo(data);
+                    await updateStatus();
+                    showMessage('✓ ' + (data.message || `已切换到 ${device}`), 'success');
+                } else {
+                    renderDeviceInfo({
+                        connected: false,
+                        message: data.message || '切换设备失败',
+                        configured_device: data.configured_device
+                    });
+                    showMessage('✗ 切换失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+            } finally {
+                if (buttonElement) {
+                    buttonElement.disabled = false;
+                    buttonElement.textContent = '🔌 切换设备';
+                }
             }
         }
 
@@ -1450,6 +1586,8 @@
             const screenshotImg = document.getElementById('screenshot');
             const streamCanvas = document.getElementById('stream-canvas');
             const streamButton = document.getElementById('stream-mode-btn');
+            const deviceSelect = document.getElementById('device-select');
+            const deviceInput = document.getElementById('device-input');
 
             bindInteraction(screenshotImg, 'screenshot');
             bindInteraction(streamCanvas, 'stream');
@@ -1472,6 +1610,24 @@
                 });
             }
 
+            if (deviceInput) {
+                deviceInput.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        switchDevice();
+                    }
+                });
+            }
+
+            if (deviceSelect && deviceInput) {
+                deviceSelect.addEventListener('change', function () {
+                    if (this.value) {
+                        deviceInput.value = this.value;
+                    }
+                });
+            }
+
+            loadDeviceInfo();
             loadConfig();
             loadMaaTasks();
         });

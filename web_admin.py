@@ -69,6 +69,7 @@ class WebAdmin:
         self._screen_stream_connections = 0
         self._screen_stream_lock = threading.Lock()
         self._trigger_lock = threading.Lock()
+        self._device_switch_lock = threading.Lock()
         self._last_manual_trigger_time = None
 
         # Setup logging handler
@@ -211,23 +212,86 @@ class WebAdmin:
         @self.app.route('/api/device')
         def api_device():
             bottle.response.content_type = 'application/json'
+            preferred_serial = self._get_preferred_serial()
             try:
                 helper, helper_error = self._get_helper_with_reconnect()
                 if helper is None:
-                    return json.dumps({'success': False, 'connected': False, 'message': helper_error or 'No device connected'})
+                    return json.dumps(self._build_device_payload(
+                        success=False,
+                        connected=False,
+                        configured_device=preferred_serial,
+                        message=helper_error or f'No device connected ({preferred_serial})'
+                    ))
 
                 controller = getattr(helper, '_controller', None)
                 if controller is None:
-                    return json.dumps({'success': True, 'connected': False, 'message': 'No device connected'})
+                    return json.dumps(self._build_device_payload(
+                        success=True,
+                        connected=False,
+                        configured_device=preferred_serial,
+                        message='No device connected'
+                    ))
 
-                return json.dumps({
-                    'success': True,
-                    'connected': True,
-                    'device': str(controller)
-                })
+                return json.dumps(self._build_device_payload(
+                    success=True,
+                    connected=True,
+                    configured_device=preferred_serial,
+                    device=str(controller)
+                ))
             except Exception as e:
                 logger.error(f'Error getting device info: {e}')
-                return json.dumps({'success': False, 'connected': False, 'message': str(e)})
+                return json.dumps(self._build_device_payload(
+                    success=False,
+                    connected=False,
+                    configured_device=preferred_serial,
+                    message=str(e)
+                ))
+
+        @self.app.route('/api/device', method='POST')
+        def api_set_device():
+            bottle.response.content_type = 'application/json'
+            preferred_serial = self._get_preferred_serial()
+            try:
+                data = bottle.request.json
+                if not data:
+                    return json.dumps(self._build_device_payload(
+                        success=False,
+                        connected=False,
+                        configured_device=preferred_serial,
+                        message='Invalid request data'
+                    ))
+
+                adb_serial = str(data.get('device', '')).strip()
+                if not adb_serial:
+                    return json.dumps(self._build_device_payload(
+                        success=False,
+                        connected=False,
+                        configured_device=preferred_serial,
+                        message='Device is required'
+                    ))
+
+                with self._device_switch_lock:
+                    controller = self._switch_device(adb_serial)
+
+                    import app
+                    app.config.device.adb_always_use_device = adb_serial
+                    app.save()
+
+                return json.dumps(self._build_device_payload(
+                    success=True,
+                    connected=True,
+                    configured_device=adb_serial,
+                    device=str(controller),
+                    message=f'已切换到 {controller}'
+                ))
+            except Exception as e:
+                logger.error(f'Error switching device: {e}')
+                return json.dumps(self._build_device_payload(
+                    success=False,
+                    connected=False,
+                    configured_device=preferred_serial,
+                    message=str(e)
+                ))
 
         @self.app.route('/api/trigger', method='POST')
         def api_trigger():
@@ -558,12 +622,96 @@ class WebAdmin:
     def _is_helper_connected(self, helper):
         return helper is not None and hasattr(helper, '_controller') and helper._controller is not None
 
+    def _get_preferred_serial(self):
+        import app
+
+        preferred_serial = app.config.device.adb_always_use_device.strip()
+        return preferred_serial or '127.0.0.1:5555'
+
+    def _build_device_payload(self, *, success, connected, configured_device=None, device=None, message=None):
+        payload = {
+            'success': success,
+            'connected': connected,
+            'configured_device': configured_device or self._get_preferred_serial(),
+            'detected_devices': self._list_detected_devices(configured_device),
+        }
+        if device is not None:
+            payload['device'] = device
+        if message is not None:
+            payload['message'] = message
+        return payload
+
+    def _list_detected_devices(self, preferred_serial=None):
+        from automator.control.adb.target import ADBControllerTarget
+        from automator.control.targets import enum_targets
+
+        configured_device = (preferred_serial or self._get_preferred_serial()).strip()
+        options = []
+        seen = set()
+
+        def add_option(value, label=None):
+            value = (value or '').strip()
+            if not value or value in seen:
+                return
+            seen.add(value)
+            options.append({
+                'value': value,
+                'label': label or value,
+            })
+
+        add_option(configured_device, f'{configured_device}（当前默认）')
+        add_option('127.0.0.1:5555', '127.0.0.1:5555（常用）')
+
+        try:
+            for target in enum_targets():
+                if not isinstance(target, ADBControllerTarget):
+                    continue
+                value = (target.adb_serial or target.adb_address or '').strip()
+                details = []
+                if target.adb_address and target.adb_address != value:
+                    details.append(target.adb_address)
+                if target.adb_serial and target.adb_serial != value:
+                    details.append(target.adb_serial)
+                if target.description:
+                    details.append(target.description)
+                label = value
+                extra = ' / '.join(dict.fromkeys(details))
+                if extra:
+                    label = f'{value}（{extra}）'
+                add_option(value, label)
+        except Exception as enum_error:
+            logger.warning(f'Failed to enumerate device targets: {enum_error}')
+
+        return options
+
+    def _switch_device(self, adb_serial):
+        helper = self.helper_getter()
+        if helper is None:
+            from Arknights.configure_launcher import get_helper
+
+            helper = get_helper()
+        if helper is None:
+            raise RuntimeError('Helper not available')
+
+        old_controller = helper.connect_device(adb_serial=adb_serial)
+        controller = getattr(helper, '_controller', None)
+        if controller is None:
+            raise RuntimeError(f'No device connected ({adb_serial})')
+
+        if old_controller is not None and old_controller is not controller:
+            try:
+                old_controller.close()
+            except Exception as close_error:
+                logger.warning(f'Failed to close previous controller: {close_error}')
+
+        return controller
+
     def _get_helper_with_reconnect(self):
         helper = self.helper_getter()
         if self._is_helper_connected(helper):
             return helper, None
 
-        preferred_serial = '127.0.0.1:5555'
+        preferred_serial = self._get_preferred_serial()
 
         if helper is not None:
             try:

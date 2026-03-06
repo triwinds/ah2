@@ -94,9 +94,15 @@ class ADBDevice:
         except RuntimeError as e:
             session.close()
             if retry_count == 0 and e.args and isinstance(e.args[0], bytes) and b'not found' in e.args[0]:
+                reconnect_serial = None
                 if ':' in self.serial and self.serial.split(':')[-1].isdigit():
-                    logger.info('adb connect %s', self.serial)
-                    self.server.paranoid_connect(self.serial)
+                    reconnect_serial = self.serial
+                else:
+                    reconnect_serial = _serial_to_loopback_endpoint(self.serial)
+                if reconnect_serial is not None:
+                    logger.info('adb connect %s', reconnect_serial)
+                    self.server.paranoid_connect(reconnect_serial)
+                    self.serial = reconnect_serial
                     return self._create_session_retry(retry_count + 1)
             raise
 
@@ -241,6 +247,16 @@ class ADBServer:
     def get_emulator(self) -> ADBDevice:
         """switch to an (SDK) emulator device"""
         return self._check_device(ADBAnyEmulatorDevice(self))
+
+
+def _serial_to_loopback_endpoint(serial: Optional[str]) -> Optional[str]:
+    if serial is None or not serial.startswith('emulator-'):
+        return None
+    try:
+        control_port = int(serial[9:])
+    except ValueError:
+        return None
+    return f'127.0.0.1:{control_port + 1}'
 
 ADBServer.DEFAULT = ADBServer()
 
