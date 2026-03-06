@@ -142,10 +142,15 @@
 
         #stream-view {
             display: none;
+            text-align: center;
         }
 
         #stream-canvas {
             background: #000;
+        }
+
+        #stream-overlay {
+            display: none;
         }
 
         .click-indicator {
@@ -471,6 +476,7 @@
             <div class="screenshot-container">
                 <div id="stream-view">
                     <canvas id="stream-canvas" class="screenshot-target"></canvas>
+                    <div id="stream-overlay" class="loading">🔄 正在等待关键帧...</div>
                 </div>
                 <img id="screenshot" class="screenshot-target" src="" alt="点击上方按钮刷新截图" style="display:none;">
                 <div id="screenshot-loading" class="loading">点击上方按钮刷新截图</div>
@@ -749,8 +755,30 @@
         let pendingBuffer = new Uint8Array(0);
         let cachedSps = null;
         let cachedPps = null;
+        let streamFirstFrameRendered = false;
         let gestureStart = null;
         let pageTeardownRequested = false;
+
+        function setStreamOverlay(text, visible) {
+            const overlay = document.getElementById('stream-overlay');
+            if (!overlay) {
+                return;
+            }
+
+            if (text) {
+                overlay.textContent = text;
+            }
+            overlay.style.display = visible ? 'block' : 'none';
+        }
+
+        function resetStreamDecodeState() {
+            closeStreamDecoder();
+            pendingBuffer = new Uint8Array(0);
+            cachedSps = null;
+            cachedPps = null;
+            streamTimestampUs = 0;
+            streamFirstFrameRendered = false;
+        }
 
         function stopAutoRefreshTimer() {
             if (autoRefreshInterval) {
@@ -1263,6 +1291,10 @@
             streamDecoder = new VideoDecoder({
                 output: frame => {
                     ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+                    if (!streamFirstFrameRendered) {
+                        streamFirstFrameRendered = true;
+                        setStreamOverlay('', false);
+                    }
                     frame.close();
                 },
                 error: error => {
@@ -1421,6 +1453,7 @@
             if (streamReconnectTimer) {
                 clearTimeout(streamReconnectTimer);
             }
+            setStreamOverlay('🔄 连接中断，正在重连...', true);
             const delay = streamReconnectDelay;
             streamReconnectTimer = setTimeout(connectStream, delay);
             streamReconnectDelay = Math.min(streamReconnectDelay * 2, MAX_STREAM_RECONNECT_DELAY);
@@ -1434,6 +1467,8 @@
             const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
             const wsUrl = `${wsProtocol}://${window.location.host}/api/screen/ws`;
             closeStreamSocket();
+            resetStreamDecodeState();
+            setStreamOverlay('🔄 正在等待关键帧...', true);
 
             streamSocket = new WebSocket(wsUrl);
             streamSocket.binaryType = 'arraybuffer';
@@ -1444,6 +1479,7 @@
                     clearTimeout(streamReconnectTimer);
                     streamReconnectTimer = null;
                 }
+                setStreamOverlay('🔄 正在等待关键帧...', true);
             };
 
             streamSocket.onmessage = function (event) {
@@ -1477,10 +1513,7 @@
 
             streamShutdownRequested = false;
             currentScreenMode = 'stream';
-            pendingBuffer = new Uint8Array(0);
-            cachedSps = null;
-            cachedPps = null;
-            streamTimestampUs = 0;
+            resetStreamDecodeState();
 
             stopAutoRefreshTimer();
             const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
@@ -1505,11 +1538,9 @@
 
             closeStreamSocket();
             closeStreamDecoder();
-            pendingBuffer = new Uint8Array(0);
-            cachedSps = null;
-            cachedPps = null;
-            streamTimestampUs = 0;
+            resetStreamDecodeState();
             currentScreenMode = 'screenshot';
+            setStreamOverlay('', false);
 
             document.getElementById('stream-view').style.display = 'none';
             document.getElementById('stream-mode-btn').textContent = '📡 实时流';

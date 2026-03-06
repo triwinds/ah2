@@ -6,13 +6,14 @@ from functools import lru_cache
 import socket
 import struct
 import logging
+import subprocess
 import time
 
 import numpy as np
 
 from util.socketutil import recvexactly, recvall
 
-from .server import ensure_adb_alive
+from .server import ensure_adb_alive, find_adb_from_android_sdk
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,127 @@ class ADBDevice:
         data = recvall(sock)
         sock.close()
         return data
+
+    def forward(self, local: str, remote: str, norebind: bool = True) -> str | None:
+        if not self.serial:
+            raise ValueError('forward() requires a concrete device serial')
+
+        protocol_errors = []
+        forward_commands = [f'host-serial:{self.serial}:forward:{local};{remote}']
+        if norebind:
+            forward_commands.insert(0, f'host-serial:{self.serial}:forward:norebind:{local};{remote}')
+
+        for command in forward_commands:
+            session = self.server.create_session()
+            try:
+                session.service(command)
+                if local == 'tcp:0':
+                    response = session.read_response().decode(errors='ignore').strip()
+                    if not response:
+                        raise RuntimeError('adb forward returned an empty local port')
+                    return response
+                return None
+            except Exception as error:
+                protocol_errors.append(error)
+            finally:
+                session.close()
+
+        return self._forward_via_subprocess(local, remote, norebind, protocol_errors)
+
+    def remove_forward(self, local: str) -> None:
+        if not self.serial:
+            raise ValueError('remove_forward() requires a concrete device serial')
+
+        protocol_error = None
+        session = self.server.create_session()
+        try:
+            session.service(f'host-serial:{self.serial}:killforward:{local}')
+            return
+        except Exception as error:
+            protocol_error = error
+        finally:
+            session.close()
+
+        self._remove_forward_via_subprocess(local, protocol_error)
+
+    def _forward_via_subprocess(self, local: str, remote: str, norebind: bool, protocol_errors: list[Exception]) -> str | None:
+        command_suffix = ['forward']
+        if norebind:
+            command_suffix.append('--no-rebind')
+        command_suffix.extend([local, remote])
+
+        last_error = None
+        for adbbin in self._iter_adb_binaries():
+            try:
+                completed = subprocess.run(
+                    [adbbin, *self._adb_subprocess_args(), *command_suffix],
+                    capture_output=True,
+                    check=True,
+                    text=True,
+                )
+                if local == 'tcp:0':
+                    response = completed.stdout.strip()
+                    if not response:
+                        raise RuntimeError('adb forward returned an empty local port')
+                    return response
+                return None
+            except Exception as error:
+                last_error = error
+
+        details = '; '.join(str(error) for error in [*protocol_errors, last_error] if error is not None)
+        raise RuntimeError(f'adb forward failed for {self.serial}: {details}')
+
+    def _remove_forward_via_subprocess(self, local: str, protocol_error: Optional[Exception]) -> None:
+        last_error = None
+        for adbbin in self._iter_adb_binaries():
+            try:
+                subprocess.run(
+                    [adbbin, *self._adb_subprocess_args(), 'forward', '--remove', local],
+                    capture_output=True,
+                    check=True,
+                    text=True,
+                )
+                return
+            except Exception as error:
+                last_error = error
+
+        details = '; '.join(str(error) for error in [protocol_error, last_error] if error is not None)
+        raise RuntimeError(f'adb remove-forward failed for {self.serial}: {details}')
+
+    def _adb_subprocess_args(self) -> list[str]:
+        if not self.serial:
+            raise ValueError('_adb_subprocess_args() requires a concrete device serial')
+
+        args: list[str] = []
+        host, port = self.server.address
+        if host not in ('127.0.0.1', 'localhost'):
+            args.extend(['-H', host])
+        if port != 5037:
+            args.extend(['-P', str(port)])
+        args.extend(['-s', self.serial])
+        return args
+
+    def _iter_adb_binaries(self) -> list[str]:
+        import app
+
+        candidates: list[str] = []
+        configured = app.config.device.adb_binary
+        if configured:
+            candidates.append(str(configured))
+        else:
+            candidates.append('adb')
+            with contextlib.suppress(FileNotFoundError):
+                bundled_adb = app.get_vendor_path('platform-tools') / 'adb'
+                candidates.append(str(bundled_adb))
+            sdk_adb = find_adb_from_android_sdk()
+            if sdk_adb is not None:
+                candidates.append(str(sdk_adb))
+
+        deduped: list[str] = []
+        for candidate in candidates:
+            if candidate and candidate not in deduped:
+                deduped.append(candidate)
+        return deduped
 
     def push(self, target_path: str, buffer: ReadableBuffer, mode=0o100755, mtime: int = None):
         """push data to device"""

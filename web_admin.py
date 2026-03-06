@@ -2,6 +2,7 @@ from gevent import monkey; monkey.patch_all()
 import bottle
 from bottle.ext.websocket import GeventWebSocketServer
 from bottle.ext.websocket import websocket
+import gevent.lock
 import json
 import logging
 import re
@@ -12,6 +13,8 @@ import collections
 from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Optional
+
+from scrcpy_session import ScrcpySession
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,8 @@ class WebAdmin:
         self.max_screen_stream_connections = 2
         self._screen_stream_connections = 0
         self._screen_stream_lock = threading.Lock()
+        self._scrcpy_sessions: dict[str, ScrcpySession] = {}
+        self._scrcpy_lock = gevent.lock.RLock()
         self._trigger_lock = threading.Lock()
         self._device_switch_lock = threading.Lock()
         self._last_manual_trigger_time = None
@@ -139,8 +144,8 @@ class WebAdmin:
                 active_connections = self._screen_stream_connections
             logger.info(f'Screen stream websocket connected, active connections={active_connections}')
 
-            screenrecord_cmd = 'screenrecord --output-format=h264 --time-limit=175 -'
             consecutive_failures = 0
+            session = None
 
             try:
                 while True:
@@ -160,40 +165,30 @@ class WebAdmin:
                         continue
 
                     try:
-                        sock = helper.control.adb.exec_stream(screenrecord_cmd)
+                        session = self._get_or_create_scrcpy_session(helper)
+                        consecutive_failures = 0
+                        session.subscribe(ws)
+                        break
                     except Exception as stream_error:
                         consecutive_failures += 1
-                        logger.error(f'Failed to start screenrecord stream ({consecutive_failures}/3): {stream_error}')
+                        logger.error(f'Failed to start scrcpy stream ({consecutive_failures}/3): {stream_error}')
                         if consecutive_failures >= 3:
-                            self._send_stream_status(ws, 'fallback', f'screenrecord unavailable: {stream_error}')
+                            self._send_stream_status(ws, 'fallback', f'scrcpy unavailable: {stream_error}')
                             return
                         if getattr(ws, 'closed', False):
                             return
                         time.sleep(min(2 ** (consecutive_failures - 1), 5))
                         continue
 
-                    consecutive_failures = 0
-
-                    try:
-                        while True:
-                            if getattr(ws, 'closed', False):
-                                return
-                            chunk = sock.recv(4096)
-                            if not chunk:
-                                # screenrecord exits when --time-limit is reached; restart immediately
-                                break
-                            if getattr(ws, 'closed', False):
-                                return
-                            ws.send(chunk)
-                    except Exception as stream_loop_error:
-                        logger.info(f'Screen stream websocket closed: {stream_loop_error}')
+                while True:
+                    if getattr(ws, 'closed', False):
                         return
-                    finally:
-                        try:
-                            sock.close()
-                        except Exception:
-                            pass
+                    message = ws.receive()
+                    if message is None:
+                        return
             finally:
+                if session is not None:
+                    session.unsubscribe(ws)
                 with self._screen_stream_lock:
                     self._screen_stream_connections = max(0, self._screen_stream_connections - 1)
                     active_connections = self._screen_stream_connections
@@ -770,6 +765,50 @@ class WebAdmin:
             logger.warning(f'Failed to get device resolution from wm size: {shell_error}')
 
         return None
+
+    def _cleanup_scrcpy_sessions_except(self, active_serial):
+        stale_sessions = []
+        with self._scrcpy_lock:
+            for serial, session in list(self._scrcpy_sessions.items()):
+                if serial == active_serial:
+                    continue
+                stale_sessions.append(session)
+                self._scrcpy_sessions.pop(serial, None)
+
+        for session in stale_sessions:
+            session.stop(reason=f'device switched to {active_serial}')
+
+    def _on_scrcpy_session_stopped(self, session: ScrcpySession):
+        with self._scrcpy_lock:
+            cached = self._scrcpy_sessions.get(session.serial)
+            if cached is session:
+                self._scrcpy_sessions.pop(session.serial, None)
+
+    def _get_or_create_scrcpy_session(self, helper) -> ScrcpySession:
+        adb = helper.control.adb
+        serial = adb.serial
+        if not serial:
+            raise RuntimeError('scrcpy streaming requires a concrete ADB serial')
+
+        self._cleanup_scrcpy_sessions_except(serial)
+
+        with self._scrcpy_lock:
+            session = self._scrcpy_sessions.get(serial)
+            if session is not None and session.running and session.healthy:
+                return session
+
+            if session is not None:
+                self._scrcpy_sessions.pop(serial, None)
+                session.stop(reason='recreating unhealthy scrcpy session')
+
+            session = ScrcpySession(adb, on_stopped=self._on_scrcpy_session_stopped)
+            self._scrcpy_sessions[serial] = session
+            try:
+                session.start()
+            except Exception:
+                self._scrcpy_sessions.pop(serial, None)
+                raise
+            return session
 
     def _send_stream_status(self, ws, status, message):
         try:
