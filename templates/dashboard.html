@@ -311,6 +311,15 @@
             font-weight: 500;
             color: #333;
         }
+
+        .stream-setting-select {
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 6px 10px;
+            background: white;
+            color: #333;
+            font-size: 0.95em;
+        }
     </style>
 </head>
 
@@ -465,6 +474,16 @@
             <div class="btn-group" style="margin-bottom: 15px;">
                 <button class="btn-primary" onclick="refreshScreenshot()">🔄 刷新截图</button>
                 <button class="btn-primary" id="stream-mode-btn" onclick="toggleStreamMode()">📡 实时流</button>
+                <div class="toggle-container" id="stream-fps-container">
+                    <span class="toggle-label">流帧率</span>
+                    <select id="stream-fps-select" class="stream-setting-select" onchange="handleStreamFpsChange()">
+                        <option value="15">15 FPS</option>
+                        <option value="20">20 FPS</option>
+                        <option value="30" selected>30 FPS</option>
+                        <option value="45">45 FPS</option>
+                        <option value="60">60 FPS</option>
+                    </select>
+                </div>
                 <div class="toggle-container">
                     <label class="toggle-switch">
                         <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh()">
@@ -751,6 +770,9 @@
         let streamReconnectDelay = 1000;
         let streamShutdownRequested = false;
         const MAX_STREAM_RECONNECT_DELAY = 30000;
+        const DEFAULT_STREAM_FPS = 30;
+        const STREAM_FPS_STORAGE_KEY = 'ah2_stream_fps';
+        const STREAM_FPS_OPTIONS = new Set(['15', '20', '30', '45', '60']);
         let streamTimestampUs = 0;
         let pendingBuffer = new Uint8Array(0);
         let cachedSps = null;
@@ -778,6 +800,57 @@
             cachedPps = null;
             streamTimestampUs = 0;
             streamFirstFrameRendered = false;
+        }
+
+        function normalizeStreamFps(value) {
+            const normalized = String(value || DEFAULT_STREAM_FPS);
+            return STREAM_FPS_OPTIONS.has(normalized) ? normalized : String(DEFAULT_STREAM_FPS);
+        }
+
+        function getStreamFpsSelect() {
+            return document.getElementById('stream-fps-select');
+        }
+
+        function loadStreamFpsPreference() {
+            const select = getStreamFpsSelect();
+            if (!select) {
+                return;
+            }
+
+            let stored = null;
+            try {
+                stored = window.localStorage.getItem(STREAM_FPS_STORAGE_KEY);
+            } catch (error) {
+                console.warn('Failed to load stream fps preference:', error);
+            }
+            select.value = normalizeStreamFps(stored);
+        }
+
+        function getSelectedStreamFps() {
+            const select = getStreamFpsSelect();
+            return parseInt(normalizeStreamFps(select ? select.value : DEFAULT_STREAM_FPS), 10);
+        }
+
+        function persistSelectedStreamFps() {
+            const normalized = String(getSelectedStreamFps());
+            try {
+                window.localStorage.setItem(STREAM_FPS_STORAGE_KEY, normalized);
+            } catch (error) {
+                console.warn('Failed to save stream fps preference:', error);
+            }
+            return parseInt(normalized, 10);
+        }
+
+        function getStreamWaitingText() {
+            return `🔄 正在等待关键帧（${getSelectedStreamFps()} FPS）...`;
+        }
+
+        function handleStreamFpsChange() {
+            const fps = persistSelectedStreamFps();
+            if (currentScreenMode === 'stream') {
+                showMessage(`✓ 已切换实时流帧率为 ${fps} FPS，正在重连`, 'success');
+                connectStream();
+            }
         }
 
         function stopAutoRefreshTimer() {
@@ -1465,10 +1538,10 @@
             }
 
             const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-            const wsUrl = `${wsProtocol}://${window.location.host}/api/screen/ws`;
+            const wsUrl = `${wsProtocol}://${window.location.host}/api/screen/ws?fps=${getSelectedStreamFps()}`;
             closeStreamSocket();
             resetStreamDecodeState();
-            setStreamOverlay('🔄 正在等待关键帧...', true);
+            setStreamOverlay(getStreamWaitingText(), true);
 
             streamSocket = new WebSocket(wsUrl);
             streamSocket.binaryType = 'arraybuffer';
@@ -1479,7 +1552,7 @@
                     clearTimeout(streamReconnectTimer);
                     streamReconnectTimer = null;
                 }
-                setStreamOverlay('🔄 正在等待关键帧...', true);
+                setStreamOverlay(getStreamWaitingText(), true);
             };
 
             streamSocket.onmessage = function (event) {
@@ -1617,15 +1690,22 @@
             const screenshotImg = document.getElementById('screenshot');
             const streamCanvas = document.getElementById('stream-canvas');
             const streamButton = document.getElementById('stream-mode-btn');
+            const streamFpsContainer = document.getElementById('stream-fps-container');
             const deviceSelect = document.getElementById('device-select');
             const deviceInput = document.getElementById('device-input');
 
             bindInteraction(screenshotImg, 'screenshot');
             bindInteraction(streamCanvas, 'stream');
+            loadStreamFpsPreference();
 
             streamSupported = await checkWebCodecsSupport();
-            if (!streamSupported && streamButton) {
-                streamButton.style.display = 'none';
+            if (!streamSupported) {
+                if (streamButton) {
+                    streamButton.style.display = 'none';
+                }
+                if (streamFpsContainer) {
+                    streamFpsContainer.style.display = 'none';
+                }
             }
 
             const sanityModeSelect = document.getElementById('sanity-mode-select');

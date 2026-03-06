@@ -51,6 +51,10 @@ class MemoryLogHandler(logging.Handler):
 
 
 class WebAdmin:
+    DEFAULT_STREAM_FPS = 30
+    MIN_STREAM_FPS = 5
+    MAX_STREAM_FPS = 60
+
     def __init__(self, scheduler, helper_getter, config_getter=None, port=8888):
         """
         Initialize WebAdmin
@@ -125,6 +129,8 @@ class WebAdmin:
                 bottle.response.status = 400
                 return 'WebSocket connection required'
 
+            requested_fps = self._parse_stream_fps(bottle.request.query.get('fps'))
+
             with self._screen_stream_lock:
                 if self._screen_stream_connections >= self.max_screen_stream_connections:
                     try:
@@ -165,7 +171,7 @@ class WebAdmin:
                         continue
 
                     try:
-                        session = self._get_or_create_scrcpy_session(helper)
+                        session = self._get_or_create_scrcpy_session(helper, requested_fps)
                         consecutive_failures = 0
                         session.subscribe(ws)
                         break
@@ -784,24 +790,36 @@ class WebAdmin:
             if cached is session:
                 self._scrcpy_sessions.pop(session.serial, None)
 
-    def _get_or_create_scrcpy_session(self, helper) -> ScrcpySession:
+    def _parse_stream_fps(self, value) -> int:
+        try:
+            fps = int(value)
+        except (TypeError, ValueError):
+            fps = self.DEFAULT_STREAM_FPS
+        return max(self.MIN_STREAM_FPS, min(self.MAX_STREAM_FPS, fps))
+
+    def _get_or_create_scrcpy_session(self, helper, requested_fps: int | None = None) -> ScrcpySession:
         adb = helper.control.adb
         serial = adb.serial
         if not serial:
             raise RuntimeError('scrcpy streaming requires a concrete ADB serial')
 
+        target_fps = self._parse_stream_fps(requested_fps)
+
         self._cleanup_scrcpy_sessions_except(serial)
 
         with self._scrcpy_lock:
             session = self._scrcpy_sessions.get(serial)
-            if session is not None and session.running and session.healthy:
+            if session is not None and session.running and session.healthy and session.max_fps == target_fps:
                 return session
 
             if session is not None:
                 self._scrcpy_sessions.pop(serial, None)
-                session.stop(reason='recreating unhealthy scrcpy session')
+                if session.max_fps != target_fps:
+                    session.stop(reason=f'recreating scrcpy session for max_fps={target_fps}')
+                else:
+                    session.stop(reason='recreating unhealthy scrcpy session')
 
-            session = ScrcpySession(adb, on_stopped=self._on_scrcpy_session_stopped)
+            session = ScrcpySession(adb, on_stopped=self._on_scrcpy_session_stopped, max_fps=target_fps)
             self._scrcpy_sessions[serial] = session
             try:
                 session.start()

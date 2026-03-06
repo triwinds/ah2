@@ -81,10 +81,12 @@ class ScrcpySession:
     IDLE_TIMEOUT_SECONDS = 10.0
     MAX_BUFFER_BYTES = 4 * 1024 * 1024
     MAX_BOOTSTRAP_BYTES = 8 * 1024 * 1024
+    DEFAULT_MAX_FPS = 30
 
-    def __init__(self, adb: ADBDevice, on_stopped: Optional[Callable[[ScrcpySession], None]] = None):
+    def __init__(self, adb: ADBDevice, on_stopped: Optional[Callable[[ScrcpySession], None]] = None, max_fps: int = DEFAULT_MAX_FPS):
         self.adb = adb
         self.serial = adb.serial or 'default'
+        self.max_fps = max(1, int(max_fps))
         self.scid = _generate_scid()
         self.local_port: Optional[int] = None
 
@@ -142,7 +144,7 @@ class ScrcpySession:
                 self.running = True
                 self.healthy = True
                 self.last_active_at = time.monotonic()
-            logger.info('Started scrcpy session for %s on tcp:%s', self.serial, self.local_port)
+            logger.info('Started scrcpy session for %s on tcp:%s at max_fps=%s', self.serial, self.local_port, self.max_fps)
         except Exception as error:
             self.start_error = str(error)
             self.stop(reason=f'start failed: {error}')
@@ -406,6 +408,7 @@ class ScrcpySession:
             'audio=false '
             'video=true '
             'control=false '
+            f'max_fps={self.max_fps} '
             'video_codec_options=i-frame-interval=2 '
             'raw_stream=true'
         )
