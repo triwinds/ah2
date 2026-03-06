@@ -144,3 +144,4 @@ packaging/*/obj
 
 node_modules
 dist
+debug/
