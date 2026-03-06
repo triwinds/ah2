@@ -87,9 +87,11 @@ def do_works():
 
         shutdown_maa()
         update_cache()
-        # 重启 adb server, 以免产生奇怪的 bug
+        # 清理离线设备，避免打断其他正在使用 adb 的线程
         try:
-            os.system('adb kill-server')
+            from automator.control.adb.client import get_config_adb_server
+
+            get_config_adb_server().disconnect_all_offline()
             if not check_bluestacks_is_alive():
                 restart_all()
             reconnect_helper()

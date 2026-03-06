@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 import socket
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
     from .client import ADBServer
 
 logger = logging.getLogger(__name__)
+_start_server_lock = threading.Lock()
 
 
 def find_adb_from_android_sdk():
@@ -66,42 +68,46 @@ def ensure_adb_alive(server: ADBServer):
     start_adb_server(server)
 
 def start_adb_server(server: ADBServer):
-    logger.info('尝试启动 adb server')
-    import subprocess
-    import app
-    adbbin = app.config.device.adb_binary
-    if not adbbin:
-        adb_binaries = ['adb']
-        try:
-            bundled_adb = app.get_vendor_path('platform-tools')
-            adb_binaries.append(bundled_adb / 'adb')
-        except FileNotFoundError:
-            pass
-        findadb = find_adb_from_android_sdk()
-        if findadb is not None:
-            adb_binaries.append(findadb)
-    else:
-        adb_binaries = [adbbin]
-    port = server.address[1]
-    for adbbin in adb_binaries:
-        try:
-            logger.debug('trying %r', adbbin)
-            if port != 5037:
-                env = {**os.environ, 'ANDROID_ADB_SERVER_PORT': str(port)}
-            else:
-                env = os.environ
-            if os.name == 'nt' and app.background:
-                si = subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=subprocess.SW_HIDE)
-                subprocess.run([adbbin, 'start-server'], env=env, check=True, startupinfo=si)
-            else:
-                subprocess.run([adbbin, 'start-server'], env=env, check=True)
-            # wait for the newly started ADB server to probe emulators
-            time.sleep(0.5)
-            if check_adb_alive(server):
-                logger.info('已启动 adb server')
-                return
-        except FileNotFoundError:
-            pass
-        except subprocess.CalledProcessError:
-            pass
-    raise OSError("can't start adb server")
+    with _start_server_lock:
+        if check_adb_alive(server):
+            return
+
+        logger.info('尝试启动 adb server')
+        import subprocess
+        import app
+        adbbin = app.config.device.adb_binary
+        if not adbbin:
+            adb_binaries = ['adb']
+            try:
+                bundled_adb = app.get_vendor_path('platform-tools')
+                adb_binaries.append(bundled_adb / 'adb')
+            except FileNotFoundError:
+                pass
+            findadb = find_adb_from_android_sdk()
+            if findadb is not None:
+                adb_binaries.append(findadb)
+        else:
+            adb_binaries = [adbbin]
+        port = server.address[1]
+        for adbbin in adb_binaries:
+            try:
+                logger.debug('trying %r', adbbin)
+                if port != 5037:
+                    env = {**os.environ, 'ANDROID_ADB_SERVER_PORT': str(port)}
+                else:
+                    env = os.environ
+                if os.name == 'nt' and app.background:
+                    si = subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=subprocess.SW_HIDE)
+                    subprocess.run([adbbin, 'start-server'], env=env, check=True, startupinfo=si)
+                else:
+                    subprocess.run([adbbin, 'start-server'], env=env, check=True)
+                # wait for the newly started ADB server to probe emulators
+                time.sleep(0.5)
+                if check_adb_alive(server):
+                    logger.info('已启动 adb server')
+                    return
+            except FileNotFoundError:
+                pass
+            except subprocess.CalledProcessError:
+                pass
+        raise OSError("can't start adb server")

@@ -16,6 +16,24 @@ from .server import ensure_adb_alive
 
 logger = logging.getLogger(__name__)
 
+
+def _get_adb_error_bytes(error) -> bytes:
+    if not error.args:
+        return b''
+    detail = error.args[0]
+    if isinstance(detail, bytes):
+        return detail.lower()
+    return str(detail).encode(errors='ignore').lower()
+
+
+def _is_retryable_transport_error(error) -> bool:
+    detail = _get_adb_error_bytes(error)
+    return b'not found' in detail or b'offline' in detail
+
+
+def _is_offline_transport_error(error) -> bool:
+    return b'offline' in _get_adb_error_bytes(error)
+
 def _check_okay(sock):
     result = recvexactly(sock, 4)
     if result != b'OKAY':
@@ -93,7 +111,7 @@ class ADBDevice:
             return session
         except RuntimeError as e:
             session.close()
-            if retry_count == 0 and e.args and isinstance(e.args[0], bytes) and b'not found' in e.args[0]:
+            if retry_count < 3 and _is_retryable_transport_error(e):
                 reconnect_serial = None
                 if ':' in self.serial and self.serial.split(':')[-1].isdigit():
                     reconnect_serial = self.serial
@@ -102,6 +120,8 @@ class ADBDevice:
                 if reconnect_serial is not None:
                     logger.info('adb connect %s', reconnect_serial)
                     self.server.paranoid_connect(reconnect_serial)
+                    if _is_offline_transport_error(e):
+                        time.sleep(min(0.5 * (retry_count + 1), 1.5))
                     self.serial = reconnect_serial
                     return self._create_session_retry(retry_count + 1)
             raise
@@ -222,7 +242,7 @@ class ADBServer:
 
     def disconnect_all_offline(self):
         with contextlib.suppress(RuntimeError):
-            for x in self.devices():
+            for x in self.devices(show_offline=True):
                 if x[1] == 'offline':
                     with contextlib.suppress(RuntimeError):
                         self.disconnect(x[0])

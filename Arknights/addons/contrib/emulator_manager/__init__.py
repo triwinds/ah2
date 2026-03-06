@@ -137,14 +137,45 @@ def check_port_in_use(port):
         return s.connect_ex(("localhost", 5555)) == 0
 
 
+def _format_adb_error(exc: Exception) -> str:
+    if exc.args:
+        detail = exc.args[0]
+    else:
+        detail = exc
+    if isinstance(detail, bytes):
+        return detail.decode("utf-8", errors="ignore")
+    return str(detail)
+
+
+def _is_transient_adb_error(exc: Exception) -> bool:
+    detail = _format_adb_error(exc).lower()
+    return "device offline" in detail or "not found" in detail
+
+
 def check_emulator_is_alive():
     if os.name == "nt":
         return check_bluestacks_is_alive()
-    # return check_redroid_is_alive()
+    if not check_redroid_is_alive():
+        return False
+    if not check_port_in_use(5555):
+        return False
     try:
         from util.adb_utils import check_game_is_in_front
 
-        return check_port_in_use(5555) and check_game_is_in_front(get_helper())
+        helper = get_helper()
+        for attempt in range(3):
+            try:
+                return check_game_is_in_front(helper)
+            except Exception as e:
+                if not _is_transient_adb_error(e) or attempt == 2:
+                    logger.error(_format_adb_error(e))
+                    return False
+                logger.warning(
+                    "ADB device not ready yet (%s), retrying (%d/3)...",
+                    _format_adb_error(e),
+                    attempt + 1,
+                )
+                time.sleep(1)
     except Exception as e:
         logger.error(e)
         return False
