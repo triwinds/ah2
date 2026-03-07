@@ -232,22 +232,26 @@ normal_icons = [stage_icon1, stage_icon2]
 extra_icons = [stage_icon_ex1]
 
 
-def recognize_with_rapidocr(pil_screen):
+def recognize_with_ppocr(pil_screen):
     from imgreco.common import convert_to_cv
-    from imgreco.ppocr_utils import get_rapidocr, calc_box_center
+    from imgreco.ppocr_utils import get_ppocr, calc_box_center
 
-    ocr_result = get_rapidocr()(convert_to_cv(pil_screen), drop_score=0.3)
+    results = get_ppocr().detect_and_ocr(convert_to_cv(pil_screen), drop_score=0.3)
     tags_map = {}
 
-    if ocr_result and ocr_result.boxes and ocr_result.txts:
-        for box, text in zip(ocr_result.boxes, ocr_result.txts):
-            if '-' not in text:
-                continue
-            pos = calc_box_center(box)
-            if pil_screen.size[0] * 0.1 < pos[0] < pil_screen.size[0] * 0.9:
-                tags_map[text] = pos
+    for result in results:
+        text = result.ocr_text
+        if '-' not in text:
+            continue
+        pos = calc_box_center(result.box)
+        if pil_screen.size[0] * 0.1 < pos[0] < pil_screen.size[0] * 0.9:
+            tags_map[text] = pos
 
     return tags_map
+
+
+def recognize_with_rapidocr(pil_screen):
+    return recognize_with_ppocr(pil_screen)
 
 
 def recognize_all_screen_stage_tags(pil_screen, allow_extra_icons=False):

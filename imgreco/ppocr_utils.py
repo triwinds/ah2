@@ -1,13 +1,9 @@
-from functools import lru_cache, cache
-from typing import List
+from functools import lru_cache
 
-import numpy as np
 import cv2
-import textdistance
 import logging
-
-from rapidocr.ch_ppocr_rec import TextRecOutput
-from rapidocr.utils.output import RapidOCROutput
+import numpy as np
+import textdistance
 
 from util.cvimage import Image
 from util.richlog import get_logger
@@ -30,16 +26,81 @@ class OcrResult:
         return self.__str__()
 
 
-@cache
+class PPOcrONNXOutput:
+    def __init__(self, txts=None, scores=None, boxes=None):
+        self.txts = txts or []
+        self.scores = scores or []
+        self.boxes = boxes
+
+
+class PPOcrONNXAdapter:
+    def __init__(self, ocr, default_use_det=True):
+        self.ocr = ocr
+        self.default_use_det = default_use_det
+
+    def __call__(self, img, use_det=None, use_cls=True, use_rec=True, drop_score=0.5,
+                 box_thresh=None, unclip_ratio=None, **kwargs):
+        if use_det is None:
+            use_det = self.default_use_det
+
+        if not use_rec:
+            return PPOcrONNXOutput(boxes=[] if use_det else None)
+
+        if use_det:
+            results = self.ocr.detect_and_ocr(
+                img,
+                drop_score=drop_score,
+                box_thresh=box_thresh,
+                unclip_ratio=unclip_ratio,
+            )
+            return PPOcrONNXOutput(
+                txts=[result.ocr_text for result in results],
+                scores=[result.score for result in results],
+                boxes=[result.box for result in results],
+            )
+
+        result = self.ocr.ocr_single_line(img)
+        if result:
+            text, score = result
+            return PPOcrONNXOutput(txts=[text], scores=[score], boxes=None)
+        return PPOcrONNXOutput(boxes=None)
+
+    def detect_and_ocr(self, img, drop_score=0.3, box_thresh=0.1, unclip_ratio=1.6):
+        return self.ocr.detect_and_ocr(
+            img,
+            drop_score=drop_score,
+            box_thresh=box_thresh,
+            unclip_ratio=unclip_ratio,
+        )
+
+    def ocr_single_line(self, img):
+        return self.ocr.ocr_single_line(img)
+
+    def ocr_lines(self, img_list):
+        results = []
+        for img in img_list:
+            result = self.ocr.ocr_single_line(img)
+            results.append([result] if result else [])
+        return results
+
+    def set_char_whitelist(self, chars):
+        self.ocr.set_char_whitelist(chars)
+
+
+@lru_cache(1)
+def get_ppocr():
+    from ppocronnx.predict_system import TextSystem
+    return TextSystem(box_thresh=0.1)
+
+
+@lru_cache(1)
 def get_rapidocr():
-    from rapidocr import RapidOCR
-    return RapidOCR(params={"Global.log_level": "ERROR", "Global.use_det": True, "Global.use_rec": True})
+    return PPOcrONNXAdapter(get_ppocr())
 
 
 @lru_cache(1)
 def get_no_det_rapidocr():
-    from rapidocr import RapidOCR
-    return RapidOCR(params={"Global.log_level": "ERROR", "Global.use_det": False})
+    return PPOcrONNXAdapter(get_ppocr(), default_use_det=False)
 
 
 def ocr_for_single_line(img) -> str:
@@ -52,9 +113,9 @@ def ocr_for_single_line(img) -> str:
     Returns:
         str: 识别的文本，如果识别失败返回空字符串
     """
-    ocr_result = get_no_det_rapidocr()(img)
-    if ocr_result and ocr_result.txts:
-        return ocr_result.txts[0]
+    result = get_ppocr().ocr_single_line(img)
+    if result:
+        return result[0]
     return ''
 
 
@@ -64,26 +125,17 @@ def calc_box_center(box, scale=1):
     return int(np.average(box_x) * scale), int(np.average(box_y) * scale)
 
 
-def detect_box(screen: Image, target_name: str, drop_score=0.3, box_thresh=0.1, unclip_ratio=1.6, no_scale=False) -> tuple[tuple[int, int] | None, float]:
+def detect_box(screen: Image, target_name: str, drop_score=0.3, box_thresh=0.1, unclip_ratio=1.6, no_scale=False):
     scale = 1 if no_scale else screen.height / 720
     if scale != 1:
         screen = screen.resize((screen.width / scale, 720))
     dbg_screen = screen.copy()
-
-    # 使用 rapidocr 直接进行OCR识别
-    ocr_result: RapidOCROutput = get_rapidocr()(screen.array, box_thresh=box_thresh, unclip_ratio=unclip_ratio)
-
-    # 转换为 OcrResult 列表
-    boxed_results = []
-    if ocr_result and ocr_result.boxes is not None and len(ocr_result.boxes) > 0 and ocr_result.txts and ocr_result.scores:
-        for box, text, score in zip(ocr_result.boxes, ocr_result.txts, ocr_result.scores):
-            if score >= drop_score:
-                boxed_results.append(OcrResult(text, score, box))
-
+    ppocr = get_ppocr()
+    boxed_results = ppocr.detect_and_ocr(screen.array, drop_score=drop_score,
+                                         box_thresh=box_thresh, unclip_ratio=unclip_ratio)
     max_score = 0
     max_res = None
     for res in boxed_results:
-        # print(res.ocr_text)
         cv2.drawContours(dbg_screen.array, [np.asarray(res.box, dtype=np.int32)], 0, (255, 0, 0), 2)
         richlogger.logtext(f'{res.ocr_text} {res.score} {res.box}')
         score = textdistance.sorensen(target_name, res.ocr_text)

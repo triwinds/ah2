@@ -232,7 +232,7 @@ def do_num_ocr(numimg: Image):
     result = ocr_engine(numimg.array, use_det=False, use_cls=False, use_rec=True)
     if len(result.txts) > 1:
         richlogger.logtext(f'{result=}')
-    if result.scores[0] < 0.95:
+    if not result.txts or not result.scores or result.scores[0] < 0.95:
         processed = preprocess(numimg.array)  # 二值化预处理
         processed = crop_to_min_bounding_rect(processed)  # 去除多余黑框
         processed = add_black_border(processed, border_size=3)  # 加上3像素黑框
@@ -241,7 +241,7 @@ def do_num_ocr(numimg: Image):
         result = ocr_engine(numimg.array, use_det=False, use_cls=False, use_rec=True)
         if len(result.txts) > 1:
             richlogger.logtext(f'{result=}')
-    if not result.txts:
+    if not result.txts or not result.scores:
         return None
 
     text = result.txts[0]

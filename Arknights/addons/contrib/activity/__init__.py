@@ -13,7 +13,7 @@ from Arknights.addons.record import RecordAddon
 from Arknights.addons.stage_navigator import StageNavigator, navigator
 from automator import AddonBase
 from imgreco import main
-from imgreco.ppocr_utils import detect_box, get_rapidocr
+from imgreco.ppocr_utils import detect_box, get_ppocr
 from penguin_stats import arkplanner
 from util.cvimage import Image
 
@@ -259,28 +259,27 @@ class ActivityAddOn(AddonBase):
         vh, vw = self.vh, self.vw
         activity_rect = screen.crop((12.083*vh, 72.222*vh, 54.167*vh, 80.278*vh))
 
-        # 使用 rapidocr 直接进行OCR识别
-        ocr_result = get_rapidocr()(activity_rect.array)
+        results = get_ppocr().detect_and_ocr(activity_rect.array)
 
         max_score = 0
         max_text = ''
 
-        if ocr_result and ocr_result.txts:
-            for text in ocr_result.txts:
-                try:
-                    idx = text.index('<') + 1
-                    text = text[idx:]
-                except:
-                    pass
-                try:
-                    idx = text.index('>')
-                    text = text[:idx]
-                except:
-                    pass
-                score = textdistance.sorensen(activity_name, text)
-                if score > max_score:
-                    max_score = score
-                    max_text = text
+        for result in results:
+            text = result.ocr_text
+            try:
+                idx = text.index('<') + 1
+                text = text[idx:]
+            except:
+                pass
+            try:
+                idx = text.index('>')
+                text = text[:idx]
+            except:
+                pass
+            score = textdistance.sorensen(activity_name, text)
+            if score > max_score:
+                max_score = score
+                max_text = text
 
         self.logger.info(f'check current activity, max text: {max_text}, score: {max_score}')
         return max_score > 0.3
