@@ -2,6 +2,7 @@ from gevent import monkey; monkey.patch_all()
 import bottle
 from bottle.ext.websocket import GeventWebSocketServer
 from bottle.ext.websocket import websocket
+import gevent
 import gevent.lock
 import json
 import logging
@@ -15,6 +16,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from scrcpy_session import ScrcpySession
+from scrcpy_control_session import ScrcpyControlSession
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,6 @@ class MemoryLogHandler(logging.Handler):
 
 
 
-
 class WebAdmin:
     DEFAULT_STREAM_FPS = 30
     MIN_STREAM_FPS = 5
@@ -76,6 +77,8 @@ class WebAdmin:
         self._screen_stream_connections = 0
         self._screen_stream_lock = threading.Lock()
         self._scrcpy_sessions: dict[str, ScrcpySession] = {}
+        self._scrcpy_control_sessions: dict[str, ScrcpyControlSession] = {}
+        self._webui_device_resolution_cache: dict[str, tuple[int, int]] = {}
         self._scrcpy_lock = gevent.lock.RLock()
         self._trigger_lock = threading.Lock()
         self._device_switch_lock = threading.Lock()
@@ -122,6 +125,55 @@ class WebAdmin:
                         break
             finally:
                 self.log_handler.sockets.discard(ws)
+
+        @self.app.route('/api/control/ws', apply=[websocket])
+        def api_control_ws(ws):
+            if ws is None:
+                bottle.response.status = 400
+                return 'WebSocket connection required'
+
+            logger.info('Control websocket connected')
+            self._send_control_status(ws, 'ready', 'Control websocket connected')
+
+            try:
+                while True:
+                    message = ws.receive()
+                    if message is None:
+                        return
+
+                    if isinstance(message, bytes):
+                        try:
+                            message = message.decode('utf-8')
+                        except UnicodeDecodeError:
+                            ws.send(json.dumps({
+                                'type': 'action_result',
+                                'success': False,
+                                'message': 'Control message must be valid UTF-8'
+                            }))
+                            continue
+
+                    try:
+                        payload = json.loads(message)
+                    except json.JSONDecodeError:
+                        ws.send(json.dumps({
+                            'type': 'action_result',
+                            'success': False,
+                            'message': 'Control message must be valid JSON'
+                        }))
+                        continue
+
+                    if not isinstance(payload, dict):
+                        ws.send(json.dumps({
+                            'type': 'action_result',
+                            'success': False,
+                            'message': 'Control message must be a JSON object'
+                        }))
+                        continue
+
+                    response, _ = self._handle_control_action(payload)
+                    ws.send(json.dumps(response))
+            finally:
+                logger.info('Control websocket disconnected')
 
         @self.app.route('/api/screen/ws', apply=[websocket])
         def api_screen_ws(ws):
@@ -418,32 +470,22 @@ class WebAdmin:
         def api_click():
             bottle.response.content_type = 'application/json'
             try:
-                # Parse request body
                 data = bottle.request.json
-                if not data:
+                if not isinstance(data, dict):
+                    bottle.response.status = 400
                     return json.dumps({'success': False, 'message': 'Invalid request data'})
 
-                x = data.get('x')
-                y = data.get('y')
-
-                if x is None or y is None:
-                    return json.dumps({'success': False, 'message': 'Missing coordinates'})
-
-                # Get helper instance
-                helper, helper_error = self._get_helper_with_reconnect()
-                if helper is None:
-                    return json.dumps({'success': False, 'message': helper_error or 'No device connected'})
-
-                # Perform the click
-                logger.info(f'Simulating click at ({x}, {y})')
-                helper.control.input.touch_tap(int(x), int(y))
-
-                return json.dumps({
-                    'success': True,
-                    'message': f'Clicked at ({x}, {y})'
-                })
+                payload, status = self._execute_click(
+                    data.get('x'),
+                    data.get('y'),
+                    data.get('screenWidth'),
+                    data.get('screenHeight')
+                )
+                bottle.response.status = status
+                return json.dumps(payload)
             except Exception as e:
                 logger.error(f'Error simulating click: {e}')
+                bottle.response.status = 500
                 return json.dumps({'success': False, 'message': str(e)})
 
         @self.app.route('/api/swipe', method='POST')
@@ -451,53 +493,21 @@ class WebAdmin:
             bottle.response.content_type = 'application/json'
             try:
                 data = bottle.request.json
-                if not data:
+                if not isinstance(data, dict):
                     bottle.response.status = 400
                     return json.dumps({'success': False, 'message': 'Invalid request data'})
 
-                try:
-                    x1 = int(data.get('x1'))
-                    y1 = int(data.get('y1'))
-                    x2 = int(data.get('x2'))
-                    y2 = int(data.get('y2'))
-                    duration = int(data.get('duration', 300))
-                except (TypeError, ValueError):
-                    bottle.response.status = 400
-                    return json.dumps({'success': False, 'message': 'Invalid swipe parameters'})
-
-                if duration < 50 or duration > 5000:
-                    bottle.response.status = 400
-                    return json.dumps({'success': False, 'message': 'Duration must be between 50 and 5000 ms'})
-
-                helper, helper_error = self._get_helper_with_reconnect()
-                if helper is None:
-                    bottle.response.status = 503
-                    return json.dumps({'success': False, 'message': helper_error or 'No device connected'})
-
-                resolution = self._get_device_resolution(helper)
-                if resolution is None:
-                    bottle.response.status = 500
-                    return json.dumps({'success': False, 'message': 'Failed to determine device resolution'})
-
-                width, height = resolution
-                in_bounds = (
-                    0 <= x1 < width and
-                    0 <= y1 < height and
-                    0 <= x2 < width and
-                    0 <= y2 < height
+                payload, status = self._execute_swipe(
+                    data.get('x1'),
+                    data.get('y1'),
+                    data.get('x2'),
+                    data.get('y2'),
+                    data.get('duration', 300),
+                    data.get('screenWidth'),
+                    data.get('screenHeight')
                 )
-                if not in_bounds:
-                    bottle.response.status = 400
-                    return json.dumps({
-                        'success': False,
-                        'message': f'Coordinates out of range (device: {width}x{height})'
-                    })
-
-                helper.control.adb.shell(f'input swipe {x1} {y1} {x2} {y2} {duration}')
-                return json.dumps({
-                    'success': True,
-                    'message': f'Swiped ({x1}, {y1}) -> ({x2}, {y2}) in {duration}ms'
-                })
+                bottle.response.status = status
+                return json.dumps(payload)
             except Exception as e:
                 logger.error(f'Error simulating swipe: {e}')
                 bottle.response.status = 500
@@ -705,6 +715,10 @@ class WebAdmin:
             except Exception as close_error:
                 logger.warning(f'Failed to close previous controller: {close_error}')
 
+        active_serial = controller.adb.serial or adb_serial
+        self._cleanup_scrcpy_sessions_except(active_serial)
+        self._cleanup_scrcpy_control_sessions_except(active_serial)
+
         return controller
 
     def _get_helper_with_reconnect(self):
@@ -784,11 +798,30 @@ class WebAdmin:
         for session in stale_sessions:
             session.stop(reason=f'device switched to {active_serial}')
 
+    def _cleanup_scrcpy_control_sessions_except(self, active_serial):
+        stale_sessions = []
+        with self._scrcpy_lock:
+            for serial, session in list(self._scrcpy_control_sessions.items()):
+                if serial == active_serial:
+                    continue
+                stale_sessions.append(session)
+                self._scrcpy_control_sessions.pop(serial, None)
+                self._webui_device_resolution_cache.pop(serial, None)
+
+        for session in stale_sessions:
+            session.stop(reason=f'device switched to {active_serial}')
+
     def _on_scrcpy_session_stopped(self, session: ScrcpySession):
         with self._scrcpy_lock:
             cached = self._scrcpy_sessions.get(session.serial)
             if cached is session:
                 self._scrcpy_sessions.pop(session.serial, None)
+
+    def _on_scrcpy_control_session_stopped(self, session: ScrcpyControlSession):
+        with self._scrcpy_lock:
+            cached = self._scrcpy_control_sessions.get(session.serial)
+            if cached is session:
+                self._scrcpy_control_sessions.pop(session.serial, None)
 
     def _parse_stream_fps(self, value) -> int:
         try:
@@ -828,6 +861,113 @@ class WebAdmin:
                 raise
             return session
 
+    def _get_or_create_scrcpy_control_session(self, helper) -> ScrcpyControlSession:
+        adb = helper.control.adb
+        serial = adb.serial
+        if not serial:
+            raise RuntimeError('scrcpy control requires a concrete ADB serial')
+
+        self._cleanup_scrcpy_control_sessions_except(serial)
+
+        with self._scrcpy_lock:
+            session = self._scrcpy_control_sessions.get(serial)
+            if session is not None and session.running and session.healthy:
+                return session
+
+            if session is not None:
+                self._scrcpy_control_sessions.pop(serial, None)
+                session.stop(reason='recreating unhealthy scrcpy control session')
+
+            session = ScrcpyControlSession(adb, on_stopped=self._on_scrcpy_control_session_stopped)
+            self._scrcpy_control_sessions[serial] = session
+            try:
+                session.start()
+            except Exception:
+                self._scrcpy_control_sessions.pop(serial, None)
+                raise
+            return session
+
+    def _parse_webui_screen_size(self, screen_width, screen_height):
+        if screen_width is None and screen_height is None:
+            return None, None, None
+
+        try:
+            parsed_width = int(screen_width)
+            parsed_height = int(screen_height)
+        except (TypeError, ValueError):
+            return None, None, 'Invalid screen size'
+
+        if parsed_width <= 0 or parsed_height <= 0:
+            return None, None, 'Screen size must be positive'
+        if parsed_width > 0xFFFF or parsed_height > 0xFFFF:
+            return None, None, 'Screen size is too large for scrcpy control protocol'
+
+        return parsed_width, parsed_height, None
+
+    def _should_refresh_webui_device_resolution(self, cached_resolution, source_width=None, source_height=None):
+        if cached_resolution is None:
+            return True
+        if source_width is None or source_height is None:
+            return False
+        cached_width, cached_height = cached_resolution
+        if cached_width == cached_height or source_width == source_height:
+            return False
+        return (cached_width > cached_height) != (source_width > source_height)
+
+    def _resolve_webui_control_sizes(self, helper, screen_width=None, screen_height=None):
+        source_width, source_height, parse_error = self._parse_webui_screen_size(screen_width, screen_height)
+        if parse_error is not None:
+            return None, 400, parse_error
+
+        serial = helper.control.adb.serial or 'default'
+        with self._scrcpy_lock:
+            cached_resolution = self._webui_device_resolution_cache.get(serial)
+
+        if self._should_refresh_webui_device_resolution(cached_resolution, source_width, source_height):
+            refreshed_resolution = self._get_device_resolution(helper)
+            if refreshed_resolution is not None:
+                cached_resolution = refreshed_resolution
+                with self._scrcpy_lock:
+                    self._webui_device_resolution_cache[serial] = refreshed_resolution
+
+        if cached_resolution is None:
+            if source_width is None or source_height is None:
+                return None, 500, 'Failed to determine device resolution'
+            cached_resolution = (source_width, source_height)
+
+        target_width, target_height = cached_resolution
+        if source_width is None or source_height is None:
+            source_width, source_height = target_width, target_height
+
+        return (source_width, source_height, target_width, target_height), 200, None
+
+    def _scale_webui_coordinate(self, value, source_extent, target_extent):
+        if source_extent <= 1 or target_extent <= 1:
+            return 0
+        if source_extent == target_extent:
+            return value
+        return int(round(value * (target_extent - 1) / (source_extent - 1)))
+
+    def _map_webui_point_to_device(self, x, y, source_width, source_height, target_width, target_height):
+        try:
+            parsed_x = int(x)
+            parsed_y = int(y)
+        except (TypeError, ValueError):
+            return None, 400, 'Invalid coordinates'
+
+        if parsed_x < 0 or parsed_y < 0:
+            return None, 400, 'Coordinates must be non-negative'
+        if parsed_x >= source_width or parsed_y >= source_height:
+            return None, 400, f'Coordinates out of range (screen: {source_width}x{source_height})'
+
+        mapped_x = self._scale_webui_coordinate(parsed_x, source_width, target_width)
+        mapped_y = self._scale_webui_coordinate(parsed_y, source_height, target_height)
+
+        if mapped_x < 0 or mapped_x >= target_width or mapped_y < 0 or mapped_y >= target_height:
+            return None, 400, f'Coordinates out of range (device: {target_width}x{target_height})'
+
+        return (mapped_x, mapped_y), 200, None
+
     def _send_stream_status(self, ws, status, message):
         try:
             ws.send(json.dumps({
@@ -837,6 +977,210 @@ class WebAdmin:
             }))
         except Exception:
             pass
+
+    def _send_control_status(self, ws, status, message):
+        try:
+            ws.send(json.dumps({
+                'type': 'control_status',
+                'status': status,
+                'message': message
+            }))
+        except Exception:
+            pass
+
+    def _perform_scrcpy_control_tap(self, session, x: int, y: int, screen_width: int, screen_height: int, hold_time: float = 0.0):
+        session.touch_tap(x, y, screen_width, screen_height, hold_time)
+
+    def _perform_scrcpy_control_swipe(self, session, x0: int, y0: int, x1: int, y1: int, duration_ms: int, screen_width: int, screen_height: int):
+        session.touch_swipe(x0, y0, x1, y1, duration_ms, screen_width, screen_height)
+
+    def _perform_helper_control_tap(self, helper, x: int, y: int):
+        control = getattr(helper, 'control', None)
+        if control is None or getattr(control, 'input', None) is None:
+            raise RuntimeError('device input adapter is not available')
+        control.input.touch_tap(int(x), int(y))
+
+    def _perform_helper_control_swipe(self, helper, x0: int, y0: int, x1: int, y1: int, duration_ms: int):
+        control = getattr(helper, 'control', None)
+        if control is None or getattr(control, 'input', None) is None:
+            raise RuntimeError('device input adapter is not available')
+        control.input.touch_swipe(int(x0), int(y0), int(x1), int(y1), max(0.05, min(5.0, int(duration_ms) / 1000.0)))
+
+    def _execute_click(self, x, y, screen_width=None, screen_height=None):
+        helper, helper_error = self._get_helper_with_reconnect()
+        if helper is None:
+            return {'success': False, 'message': helper_error or 'No device connected'}, 503
+
+        size_result, size_status, size_error = self._resolve_webui_control_sizes(helper, screen_width, screen_height)
+        if size_error is not None:
+            return {'success': False, 'message': size_error}, size_status
+
+        source_width, source_height, target_width, target_height = size_result
+        mapped_point, point_status, point_error = self._map_webui_point_to_device(
+            x,
+            y,
+            source_width,
+            source_height,
+            target_width,
+            target_height,
+        )
+        if point_error is not None:
+            return {'success': False, 'message': point_error}, point_status
+
+        mapped_x, mapped_y = mapped_point
+
+        try:
+            session = self._get_or_create_scrcpy_control_session(helper)
+            logger.info(
+                'Simulating web UI click at (%s, %s) mapped to (%s, %s) on %sx%s via scrcpy control',
+                x,
+                y,
+                mapped_x,
+                mapped_y,
+                target_width,
+                target_height,
+            )
+            self._perform_scrcpy_control_tap(session, mapped_x, mapped_y, target_width, target_height)
+        except Exception as control_error:
+            logger.warning('Web UI scrcpy click failed, falling back to helper input: %s', control_error)
+            try:
+                logger.info(
+                    'Simulating web UI click at (%s, %s) mapped to (%s, %s) on %sx%s via helper fallback',
+                    x,
+                    y,
+                    mapped_x,
+                    mapped_y,
+                    target_width,
+                    target_height,
+                )
+                self._perform_helper_control_tap(helper, mapped_x, mapped_y)
+            except Exception as helper_error:
+                logger.error('Web UI click failed via scrcpy control (%s) and helper fallback (%s)', control_error, helper_error)
+                return {'success': False, 'message': f'click failed: {control_error}; helper fallback failed: {helper_error}'}, 503
+
+        return {'success': True, 'message': f'Clicked at ({x}, {y})'}, 200
+
+    def _execute_swipe(self, x1, y1, x2, y2, duration=300, screen_width=None, screen_height=None):
+        try:
+            duration = int(duration)
+        except (TypeError, ValueError):
+            return {'success': False, 'message': 'Invalid swipe parameters'}, 400
+
+        if duration < 50 or duration > 5000:
+            return {'success': False, 'message': 'Duration must be between 50 and 5000 ms'}, 400
+
+        helper, helper_error = self._get_helper_with_reconnect()
+        if helper is None:
+            return {'success': False, 'message': helper_error or 'No device connected'}, 503
+
+        size_result, size_status, size_error = self._resolve_webui_control_sizes(helper, screen_width, screen_height)
+        if size_error is not None:
+            return {'success': False, 'message': size_error}, size_status
+
+        source_width, source_height, target_width, target_height = size_result
+        start_point, start_status, start_error = self._map_webui_point_to_device(
+            x1,
+            y1,
+            source_width,
+            source_height,
+            target_width,
+            target_height,
+        )
+        if start_error is not None:
+            return {'success': False, 'message': start_error}, start_status
+
+        end_point, end_status, end_error = self._map_webui_point_to_device(
+            x2,
+            y2,
+            source_width,
+            source_height,
+            target_width,
+            target_height,
+        )
+        if end_error is not None:
+            return {'success': False, 'message': end_error}, end_status
+
+        mapped_x1, mapped_y1 = start_point
+        mapped_x2, mapped_y2 = end_point
+
+        try:
+            session = self._get_or_create_scrcpy_control_session(helper)
+            logger.info(
+                'Simulating web UI swipe (%s, %s) -> (%s, %s) mapped to (%s, %s) -> (%s, %s) in %sms on %sx%s via scrcpy control',
+                x1,
+                y1,
+                x2,
+                y2,
+                mapped_x1,
+                mapped_y1,
+                mapped_x2,
+                mapped_y2,
+                duration,
+                target_width,
+                target_height,
+            )
+            self._perform_scrcpy_control_swipe(session, mapped_x1, mapped_y1, mapped_x2, mapped_y2, duration, target_width, target_height)
+        except Exception as control_error:
+            logger.warning('Web UI scrcpy swipe failed, falling back to helper input: %s', control_error)
+            try:
+                logger.info(
+                    'Simulating web UI swipe (%s, %s) -> (%s, %s) mapped to (%s, %s) -> (%s, %s) in %sms on %sx%s via helper fallback',
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    mapped_x1,
+                    mapped_y1,
+                    mapped_x2,
+                    mapped_y2,
+                    duration,
+                    target_width,
+                    target_height,
+                )
+                self._perform_helper_control_swipe(helper, mapped_x1, mapped_y1, mapped_x2, mapped_y2, duration)
+            except Exception as helper_error:
+                logger.error('Web UI swipe failed via scrcpy control (%s) and helper fallback (%s)', control_error, helper_error)
+                return {'success': False, 'message': f'swipe failed: {control_error}; helper fallback failed: {helper_error}'}, 503
+
+        return {
+            'success': True,
+            'message': f'Swiped ({x1}, {y1}) -> ({x2}, {y2}) in {duration}ms'
+        }, 200
+
+    def _handle_control_action(self, payload):
+        action = str(payload.get('action') or payload.get('type') or '').strip().lower()
+        request_id = payload.get('requestId')
+
+        if action == 'click':
+            body, _ = self._execute_click(
+                payload.get('x'),
+                payload.get('y'),
+                payload.get('screenWidth'),
+                payload.get('screenHeight')
+            )
+        elif action == 'swipe':
+            body, _ = self._execute_swipe(
+                payload.get('x1'),
+                payload.get('y1'),
+                payload.get('x2'),
+                payload.get('y2'),
+                payload.get('duration', 300),
+                payload.get('screenWidth'),
+                payload.get('screenHeight')
+            )
+        else:
+            body = {
+                'success': False,
+                'message': f'Unsupported control action: {action or "unknown"}'
+            }
+
+        response = {
+            'type': 'action_result',
+            'action': action or None,
+            'requestId': request_id,
+        }
+        response.update(body)
+        return response, 200 if body.get('success') else 400
 
     def _get_status(self):
         """Get current status of scheduler and emulator"""
