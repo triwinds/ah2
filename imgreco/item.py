@@ -228,8 +228,18 @@ def preprocess(img: cv2.typing.MatLike):
 def do_num_ocr(numimg: Image):
     richlogger = get_logger(__name__)
 
+    def to_ocr_input(image: Image):
+        array = image.array
+        if array.ndim == 2:
+            return cv2.cvtColor(array, cv2.COLOR_GRAY2BGR)
+        if array.ndim == 3 and array.shape[2] == 1:
+            return cv2.cvtColor(array, cv2.COLOR_GRAY2BGR)
+        if image.mode == 'BGR':
+            return array
+        return image.convert('BGR').array
+
     richlogger.logimage(numimg)
-    result = ocr_engine(numimg.array, use_det=False, use_cls=False, use_rec=True)
+    result = ocr_engine(to_ocr_input(numimg), use_det=False, use_cls=False, use_rec=True)
     if len(result.txts) > 1:
         richlogger.logtext(f'{result=}')
     if not result.txts or not result.scores or result.scores[0] < 0.95:
@@ -238,7 +248,7 @@ def do_num_ocr(numimg: Image):
         processed = add_black_border(processed, border_size=3)  # 加上3像素黑框
         numimg = crop_blackedge(Image.fromarray(processed))
         richlogger.logimage(numimg)
-        result = ocr_engine(numimg.array, use_det=False, use_cls=False, use_rec=True)
+        result = ocr_engine(to_ocr_input(numimg), use_det=False, use_cls=False, use_rec=True)
         if len(result.txts) > 1:
             richlogger.logtext(f'{result=}')
     if not result.txts or not result.scores:

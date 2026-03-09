@@ -92,6 +92,8 @@ def get_item_img(pil_screen, cv_screen, dbg_screen, center_x, center_y):
 def get_circles(gray_img, min_radius=56, max_radius=68):
     circles = cv2.HoughCircles(gray_img, cv2.HOUGH_GRADIENT, 1, 100, param1=128,
                                param2=30, minRadius=min_radius, maxRadius=max_radius)
+    if circles is None:
+        return None
     return circles[0]
 
 def convert_to_pil(cv_img):
