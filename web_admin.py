@@ -15,6 +15,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Optional
 
+from automator.control.types import ControllerCapabilities, EventAction
 from scrcpy_session import ScrcpySession
 from scrcpy_control_session import ScrcpyControlSession
 
@@ -80,6 +81,8 @@ class WebAdmin:
         self._scrcpy_control_sessions: dict[str, ScrcpyControlSession] = {}
         self._webui_device_resolution_cache: dict[str, tuple[int, int]] = {}
         self._scrcpy_lock = gevent.lock.RLock()
+        self._webui_touch_lock = gevent.lock.RLock()
+        self._active_webui_touches: dict[str, dict[str, object]] = {}
         self._trigger_lock = threading.Lock()
         self._device_switch_lock = threading.Lock()
         self._last_manual_trigger_time = None
@@ -134,6 +137,7 @@ class WebAdmin:
 
             logger.info('Control websocket connected')
             self._send_control_status(ws, 'ready', 'Control websocket connected')
+            active_touch = False
 
             try:
                 while True:
@@ -171,8 +175,15 @@ class WebAdmin:
                         continue
 
                     response, _ = self._handle_control_action(payload)
+                    if response.get('success'):
+                        if response.get('action') == 'touch_start':
+                            active_touch = True
+                        elif response.get('action') in {'touch_end', 'touch_cancel'}:
+                            active_touch = False
                     ws.send(json.dumps(response))
             finally:
+                if active_touch:
+                    self._cancel_active_webui_touch_for_current_helper()
                 logger.info('Control websocket disconnected')
 
         @self.app.route('/api/screen/ws', apply=[websocket])
@@ -994,6 +1005,15 @@ class WebAdmin:
     def _perform_scrcpy_control_swipe(self, session, x0: int, y0: int, x1: int, y1: int, duration_ms: int, screen_width: int, screen_height: int):
         session.touch_swipe(x0, y0, x1, y1, duration_ms, screen_width, screen_height)
 
+    def _perform_scrcpy_control_touch_start(self, session, x: int, y: int, screen_width: int, screen_height: int):
+        session.touch_down(x, y, screen_width, screen_height)
+
+    def _perform_scrcpy_control_touch_move(self, session, x: int, y: int, screen_width: int, screen_height: int):
+        session.touch_move(x, y, screen_width, screen_height)
+
+    def _perform_scrcpy_control_touch_end(self, session, x: int, y: int, screen_width: int, screen_height: int):
+        session.touch_up(x, y, screen_width, screen_height)
+
     def _perform_helper_control_tap(self, helper, x: int, y: int):
         control = getattr(helper, 'control', None)
         if control is None or getattr(control, 'input', None) is None:
@@ -1005,6 +1025,197 @@ class WebAdmin:
         if control is None or getattr(control, 'input', None) is None:
             raise RuntimeError('device input adapter is not available')
         control.input.touch_swipe(int(x0), int(y0), int(x1), int(y1), max(0.05, min(5.0, int(duration_ms) / 1000.0)))
+
+    def _get_helper_touch_input(self, helper):
+        control = getattr(helper, 'control', None)
+        input_adapter = getattr(control, 'input', None) if control is not None else None
+        if input_adapter is None:
+            raise RuntimeError('device input adapter is not available')
+
+        caps = input_adapter.get_input_capabilities()
+        if ControllerCapabilities.TOUCH_EVENTS not in caps:
+            raise RuntimeError('device input adapter does not support touch events')
+        return input_adapter
+
+    def _resolve_live_touch_context(self, x, y, screen_width=None, screen_height=None):
+        helper, helper_error = self._get_helper_with_reconnect()
+        if helper is None:
+            return None, 503, helper_error or 'No device connected'
+
+        size_result, size_status, size_error = self._resolve_webui_control_sizes(helper, screen_width, screen_height)
+        if size_error is not None:
+            return None, size_status, size_error
+
+        source_width, source_height, target_width, target_height = size_result
+        mapped_point, point_status, point_error = self._map_webui_point_to_device(
+            x,
+            y,
+            source_width,
+            source_height,
+            target_width,
+            target_height,
+        )
+        if point_error is not None:
+            return None, point_status, point_error
+
+        serial = helper.control.adb.serial or 'default'
+        mapped_x, mapped_y = mapped_point
+        return (helper, serial, mapped_x, mapped_y, target_width, target_height), 200, None
+
+    def _get_active_webui_touch_state(self, serial: str):
+        with self._webui_touch_lock:
+            return self._active_webui_touches.get(serial)
+
+    def _set_active_webui_touch_state(self, serial: str, state: dict[str, object]):
+        with self._webui_touch_lock:
+            self._active_webui_touches[serial] = state
+
+    def _pop_active_webui_touch_state(self, serial: str):
+        with self._webui_touch_lock:
+            return self._active_webui_touches.pop(serial, None)
+
+    def _update_active_webui_touch_state(self, serial: str, **updates):
+        with self._webui_touch_lock:
+            state = self._active_webui_touches.get(serial)
+            if state is None:
+                return None
+            state.update(updates)
+            return dict(state)
+
+    def _execute_touch_start(self, x, y, screen_width=None, screen_height=None):
+        context, status, error = self._resolve_live_touch_context(x, y, screen_width, screen_height)
+        if error is not None:
+            return {'success': False, 'message': error}, status
+
+        helper, serial, mapped_x, mapped_y, target_width, target_height = context
+        if self._get_active_webui_touch_state(serial) is not None:
+            return {'success': False, 'message': 'A touch gesture is already active'}, 409
+
+        try:
+            session = self._get_or_create_scrcpy_control_session(helper)
+            logger.info(
+                'Starting realtime web UI touch at (%s, %s) mapped to (%s, %s) on %sx%s via scrcpy control',
+                x,
+                y,
+                mapped_x,
+                mapped_y,
+                target_width,
+                target_height,
+            )
+            self._perform_scrcpy_control_touch_start(session, mapped_x, mapped_y, target_width, target_height)
+            state = {
+                'transport': 'scrcpy',
+                'session': session,
+                'x': mapped_x,
+                'y': mapped_y,
+                'screen_width': target_width,
+                'screen_height': target_height,
+            }
+        except Exception as control_error:
+            logger.warning('Realtime web UI touch start failed via scrcpy control, falling back to helper input: %s', control_error)
+            try:
+                input_adapter = self._get_helper_touch_input(helper)
+                input_adapter.touch_event(EventAction.DOWN, int(mapped_x), int(mapped_y))
+                state = {
+                    'transport': 'helper',
+                    'x': mapped_x,
+                    'y': mapped_y,
+                    'screen_width': target_width,
+                    'screen_height': target_height,
+                }
+            except Exception as helper_error:
+                logger.error('Realtime web UI touch start failed via scrcpy control (%s) and helper fallback (%s)', control_error, helper_error)
+                return {'success': False, 'message': f'touch start failed: {control_error}; helper fallback failed: {helper_error}'}, 503
+
+        self._set_active_webui_touch_state(serial, state)
+        return {'success': True, 'message': f'Touch started at ({x}, {y})'}, 200
+
+    def _execute_touch_move(self, x, y, screen_width=None, screen_height=None):
+        context, status, error = self._resolve_live_touch_context(x, y, screen_width, screen_height)
+        if error is not None:
+            return {'success': False, 'message': error}, status
+
+        helper, serial, mapped_x, mapped_y, target_width, target_height = context
+        state = self._get_active_webui_touch_state(serial)
+        if state is None:
+            return {'success': False, 'message': 'No active touch gesture'}, 409
+
+        transport = state.get('transport')
+        try:
+            if transport == 'scrcpy':
+                session = state.get('session')
+                if not isinstance(session, ScrcpyControlSession):
+                    raise RuntimeError('scrcpy touch session is unavailable')
+                self._perform_scrcpy_control_touch_move(session, mapped_x, mapped_y, target_width, target_height)
+            elif transport == 'helper':
+                input_adapter = self._get_helper_touch_input(helper)
+                input_adapter.touch_event(EventAction.MOVE, int(mapped_x), int(mapped_y))
+            else:
+                raise RuntimeError(f'unsupported touch transport: {transport}')
+        except Exception as error:
+            logger.error('Realtime web UI touch move failed: %s', error)
+            self._pop_active_webui_touch_state(serial)
+            return {'success': False, 'message': f'touch move failed: {error}'}, 503
+
+        self._update_active_webui_touch_state(
+            serial,
+            x=mapped_x,
+            y=mapped_y,
+            screen_width=target_width,
+            screen_height=target_height,
+        )
+        return {'success': True, 'message': f'Touch moved to ({x}, {y})'}, 200
+
+    def _execute_touch_end(self, x, y, screen_width=None, screen_height=None):
+        context, status, error = self._resolve_live_touch_context(x, y, screen_width, screen_height)
+        if error is not None:
+            return {'success': False, 'message': error}, status
+
+        helper, serial, mapped_x, mapped_y, target_width, target_height = context
+        state = self._pop_active_webui_touch_state(serial)
+        if state is None:
+            return {'success': False, 'message': 'No active touch gesture'}, 409
+
+        transport = state.get('transport')
+        try:
+            if transport == 'scrcpy':
+                session = state.get('session')
+                if not isinstance(session, ScrcpyControlSession):
+                    raise RuntimeError('scrcpy touch session is unavailable')
+                self._perform_scrcpy_control_touch_end(session, mapped_x, mapped_y, target_width, target_height)
+            elif transport == 'helper':
+                input_adapter = self._get_helper_touch_input(helper)
+                input_adapter.touch_event(EventAction.UP, int(mapped_x), int(mapped_y))
+            else:
+                raise RuntimeError(f'unsupported touch transport: {transport}')
+        except Exception as error:
+            logger.error('Realtime web UI touch end failed: %s', error)
+            return {'success': False, 'message': f'touch end failed: {error}'}, 503
+
+        return {'success': True, 'message': f'Touch ended at ({x}, {y})'}, 200
+
+    def _cancel_active_webui_touch_for_current_helper(self):
+        helper, helper_error = self._get_helper_with_reconnect()
+        if helper is None:
+            if helper_error:
+                logger.warning('Failed to resolve helper while cancelling active web UI touch: %s', helper_error)
+            return
+
+        serial = helper.control.adb.serial or 'default'
+        state = self._pop_active_webui_touch_state(serial)
+        if state is None:
+            return
+
+        try:
+            if state.get('transport') == 'scrcpy':
+                session = state.get('session')
+                if isinstance(session, ScrcpyControlSession):
+                    session.cancel_active_touch()
+            elif state.get('transport') == 'helper':
+                input_adapter = self._get_helper_touch_input(helper)
+                input_adapter.touch_event(EventAction.UP, int(state.get('x', 0)), int(state.get('y', 0)))
+        except Exception as error:
+            logger.warning('Failed to cancel active web UI touch: %s', error)
 
     def _execute_click(self, x, y, screen_width=None, screen_height=None):
         helper, helper_error = self._get_helper_with_reconnect()
@@ -1165,6 +1376,27 @@ class WebAdmin:
                 payload.get('x2'),
                 payload.get('y2'),
                 payload.get('duration', 300),
+                payload.get('screenWidth'),
+                payload.get('screenHeight')
+            )
+        elif action == 'touch_start':
+            body, _ = self._execute_touch_start(
+                payload.get('x'),
+                payload.get('y'),
+                payload.get('screenWidth'),
+                payload.get('screenHeight')
+            )
+        elif action == 'touch_move':
+            body, _ = self._execute_touch_move(
+                payload.get('x'),
+                payload.get('y'),
+                payload.get('screenWidth'),
+                payload.get('screenHeight')
+            )
+        elif action == 'touch_end':
+            body, _ = self._execute_touch_end(
+                payload.get('x'),
+                payload.get('y'),
                 payload.get('screenWidth'),
                 payload.get('screenHeight')
             )

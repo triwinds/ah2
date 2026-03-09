@@ -7,7 +7,7 @@ import secrets
 import socket
 import struct
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 import gevent
 import gevent.lock
@@ -66,6 +66,9 @@ class ScrcpyControlSession:
         self.last_active_at = time.monotonic()
         self.start_error: Optional[str] = None
         self.exit_reason: Optional[str] = None
+        self._touch_active = False
+        self._touch_screen_size: Optional[tuple[int, int]] = None
+        self._touch_last_position: Optional[tuple[int, int]] = None
 
         self._lock = gevent.lock.RLock()
         self._action_lock = gevent.lock.Semaphore(1)
@@ -109,6 +112,8 @@ class ScrcpyControlSession:
             with self._action_lock:
                 if not self.running or not self.healthy or self.control_sock is None:
                     raise RuntimeError(self.start_error or self.exit_reason or 'scrcpy control session is not healthy')
+                if self._touch_active:
+                    raise RuntimeError('a realtime touch is already active')
                 self.last_active_at = time.monotonic()
                 self._send_touch_event(self.ACTION_DOWN, x, y, screen_width, screen_height, pressure=1.0)
                 if hold_time > 0:
@@ -127,6 +132,8 @@ class ScrcpyControlSession:
             with self._action_lock:
                 if not self.running or not self.healthy or self.control_sock is None:
                     raise RuntimeError(self.start_error or self.exit_reason or 'scrcpy control session is not healthy')
+                if self._touch_active:
+                    raise RuntimeError('a realtime touch is already active')
                 self.last_active_at = time.monotonic()
                 self._send_touch_event(self.ACTION_DOWN, x0, y0, screen_width, screen_height, pressure=1.0)
 
@@ -154,6 +161,135 @@ class ScrcpyControlSession:
                 self.stop(reason=f'scrcpy control swipe failed: {error}')
             raise
 
+    def touch_down(self, x: int, y: int, screen_width: int, screen_height: int) -> None:
+        try:
+            with self._action_lock:
+                if not self.running or not self.healthy or self.control_sock is None:
+                    raise RuntimeError(self.start_error or self.exit_reason or 'scrcpy control session is not healthy')
+                if self._touch_active:
+                    raise RuntimeError('a realtime touch is already active')
+
+                self.last_active_at = time.monotonic()
+                self._send_touch_event(self.ACTION_DOWN, x, y, screen_width, screen_height, pressure=1.0)
+                self._touch_active = True
+                self._touch_screen_size = (int(screen_width), int(screen_height))
+                self._touch_last_position = (int(x), int(y))
+                self.last_active_at = time.monotonic()
+        except Exception as error:
+            if self.running:
+                self.stop(reason=f'scrcpy control touch down failed: {error}')
+            raise
+
+    def touch_move(self, x: int, y: int, screen_width: int, screen_height: int) -> None:
+        try:
+            with self._action_lock:
+                if not self.running or not self.healthy or self.control_sock is None:
+                    raise RuntimeError(self.start_error or self.exit_reason or 'scrcpy control session is not healthy')
+                if not self._touch_active:
+                    raise RuntimeError('no realtime touch is active')
+
+                active_screen_width, active_screen_height = self._touch_screen_size or (int(screen_width), int(screen_height))
+                self.last_active_at = time.monotonic()
+                self._send_touch_event(self.ACTION_MOVE, x, y, active_screen_width, active_screen_height, pressure=1.0)
+                self._touch_last_position = (int(x), int(y))
+                self.last_active_at = time.monotonic()
+        except Exception as error:
+            if self.running:
+                self.stop(reason=f'scrcpy control touch move failed: {error}')
+            raise
+
+    def touch_up(self, x: int, y: int, screen_width: int, screen_height: int) -> None:
+        try:
+            with self._action_lock:
+                if not self.running or not self.healthy or self.control_sock is None:
+                    raise RuntimeError(self.start_error or self.exit_reason or 'scrcpy control session is not healthy')
+                if not self._touch_active:
+                    raise RuntimeError('no realtime touch is active')
+
+                active_screen_width, active_screen_height = self._touch_screen_size or (int(screen_width), int(screen_height))
+                self.last_active_at = time.monotonic()
+                self._send_touch_event(self.ACTION_UP, x, y, active_screen_width, active_screen_height, pressure=0.0)
+                self._touch_active = False
+                self._touch_screen_size = None
+                self._touch_last_position = None
+                self.last_active_at = time.monotonic()
+        except Exception as error:
+            if self.running:
+                self.stop(reason=f'scrcpy control touch up failed: {error}')
+            raise
+
+    def touch_path(self, points: Sequence[dict[str, int]], screen_width: int, screen_height: int) -> None:
+        if len(points) < 2:
+            raise ValueError('touch path must contain at least 2 points')
+
+        try:
+            with self._action_lock:
+                if not self.running or not self.healthy or self.control_sock is None:
+                    raise RuntimeError(self.start_error or self.exit_reason or 'scrcpy control session is not healthy')
+                if self._touch_active:
+                    raise RuntimeError('a realtime touch is already active')
+
+                normalized_points = [
+                    {
+                        'x': int(point['x']),
+                        'y': int(point['y']),
+                        't': max(0, int(point.get('t', 0))),
+                    }
+                    for point in points
+                ]
+
+                first_point = normalized_points[0]
+                last_point = normalized_points[-1]
+                self.last_active_at = time.monotonic()
+                self._send_touch_event(self.ACTION_DOWN, first_point['x'], first_point['y'], screen_width, screen_height, pressure=1.0)
+
+                path_started_at = time.perf_counter()
+                last_sent_x = first_point['x']
+                last_sent_y = first_point['y']
+
+                for point in normalized_points[1:]:
+                    target_at = path_started_at + (point['t'] / 1000.0)
+                    remaining = target_at - time.perf_counter()
+                    if remaining > 0:
+                        gevent.sleep(remaining)
+
+                    current_x = point['x']
+                    current_y = point['y']
+                    if current_x == last_sent_x and current_y == last_sent_y:
+                        continue
+
+                    self._send_touch_event(self.ACTION_MOVE, current_x, current_y, screen_width, screen_height, pressure=1.0)
+                    last_sent_x = current_x
+                    last_sent_y = current_y
+
+                self._send_touch_event(self.ACTION_UP, last_point['x'], last_point['y'], screen_width, screen_height, pressure=0.0)
+                self.last_active_at = time.monotonic()
+        except Exception as error:
+            if self.running:
+                self.stop(reason=f'scrcpy control path failed: {error}')
+            raise
+
+    def cancel_active_touch(self) -> None:
+        with self._action_lock:
+            if not self.running or not self.healthy or self.control_sock is None:
+                self._touch_active = False
+                self._touch_screen_size = None
+                self._touch_last_position = None
+                return
+            if not self._touch_active or self._touch_last_position is None or self._touch_screen_size is None:
+                self._touch_active = False
+                self._touch_screen_size = None
+                self._touch_last_position = None
+                return
+
+            last_x, last_y = self._touch_last_position
+            screen_width, screen_height = self._touch_screen_size
+            self._send_touch_event(self.ACTION_UP, last_x, last_y, screen_width, screen_height, pressure=0.0)
+            self._touch_active = False
+            self._touch_screen_size = None
+            self._touch_last_position = None
+            self.last_active_at = time.monotonic()
+
     def stop(self, reason: Optional[str] = None) -> None:
         current = gevent.getcurrent()
         with self._lock:
@@ -166,6 +302,9 @@ class ScrcpyControlSession:
                 self.exit_reason = reason
             self.running = False
             self.healthy = False
+            self._touch_active = False
+            self._touch_screen_size = None
+            self._touch_last_position = None
 
             server_greenlet = self.server_greenlet
             self.server_greenlet = None

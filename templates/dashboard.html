@@ -138,6 +138,9 @@
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             cursor: crosshair;
+            user-select: none;
+            -webkit-user-drag: none;
+            touch-action: none;
         }
 
         #stream-view {
@@ -780,6 +783,18 @@
         let streamFirstFrameRendered = false;
         let gestureStart = null;
         let pageTeardownRequested = false;
+        let controlSocket = null;
+        let controlSocketReady = false;
+        let controlReconnectTimer = null;
+        let controlReconnectDelay = 500;
+        let controlWsShutdownRequested = false;
+        let controlRequestSequence = 0;
+        const pendingControlRequests = new Map();
+        const CONTROL_ACK_TIMEOUT = 3000;
+        const MAX_CONTROL_RECONNECT_DELAY = 5000;
+        const GESTURE_CLICK_THRESHOLD_PX = 10;
+        const GESTURE_MOVE_SAMPLE_DISTANCE_PX = 2;
+        const GESTURE_MOVE_SAMPLE_INTERVAL_MS = 16;
 
         function setStreamOverlay(text, visible) {
             const overlay = document.getElementById('stream-overlay');
@@ -910,7 +925,7 @@
             return { element: img, width, height };
         }
 
-        function mapClientToDevice(clientX, clientY, source) {
+        function mapClientToDevice(clientX, clientY, source, clampToBounds = false) {
             const target = getTargetInfo(source);
             if (!target.element || target.width <= 0 || target.height <= 0) {
                 return null;
@@ -936,9 +951,12 @@
                 offsetY = (rect.height - contentHeight) / 2;
             }
 
-            const localX = clientX - rect.left - offsetX;
-            const localY = clientY - rect.top - offsetY;
-            if (localX < 0 || localY < 0 || localX > contentWidth || localY > contentHeight) {
+            let localX = clientX - rect.left - offsetX;
+            let localY = clientY - rect.top - offsetY;
+            if (clampToBounds) {
+                localX = Math.min(contentWidth, Math.max(0, localX));
+                localY = Math.min(contentHeight, Math.max(0, localY));
+            } else if (localX < 0 || localY < 0 || localX > contentWidth || localY > contentHeight) {
                 return null;
             }
 
@@ -946,7 +964,12 @@
             const normalizedY = Math.min(1, Math.max(0, localY / contentHeight));
             const x = Math.round(normalizedX * (target.width - 1));
             const y = Math.round(normalizedY * (target.height - 1));
-            return { x, y };
+            return {
+                x,
+                y,
+                screenWidth: target.width,
+                screenHeight: target.height
+            };
         }
 
         function showClickIndicator(clientX, clientY) {
@@ -964,18 +987,219 @@
             setTimeout(() => indicator.remove(), 600);
         }
 
-        async function sendClick(x, y, clientX, clientY) {
+        function clearPendingControlRequests(message) {
+            pendingControlRequests.forEach(({ reject, timeoutId }) => {
+                clearTimeout(timeoutId);
+                reject(new Error(message));
+            });
+            pendingControlRequests.clear();
+        }
+
+        function closeControlWebSocket(clearPending = false) {
+            if (controlReconnectTimer) {
+                clearTimeout(controlReconnectTimer);
+                controlReconnectTimer = null;
+            }
+
+            controlSocketReady = false;
+
+            if (controlSocket) {
+                try {
+                    controlSocket.onopen = null;
+                    controlSocket.onmessage = null;
+                    controlSocket.onclose = null;
+                    controlSocket.onerror = null;
+                    controlSocket.close();
+                } catch (error) {
+                    console.warn('Failed to close control websocket:', error);
+                }
+            }
+
+            controlSocket = null;
+
+            if (clearPending) {
+                clearPendingControlRequests('控制通道已关闭');
+            }
+        }
+
+        function scheduleControlReconnect() {
+            if (controlWsShutdownRequested || pageTeardownRequested) {
+                return;
+            }
+
+            if (controlReconnectTimer) {
+                clearTimeout(controlReconnectTimer);
+            }
+
+            const delay = controlReconnectDelay;
+            controlReconnectTimer = setTimeout(() => {
+                controlReconnectTimer = null;
+                connectControlWebSocket();
+            }, delay);
+            controlReconnectDelay = Math.min(controlReconnectDelay * 2, MAX_CONTROL_RECONNECT_DELAY);
+        }
+
+        function handleControlMessage(event) {
+            let payload;
+
+            try {
+                payload = JSON.parse(event.data);
+            } catch (error) {
+                console.warn('Failed to parse control websocket message:', error);
+                return;
+            }
+
+            if (!payload || typeof payload !== 'object') {
+                return;
+            }
+
+            if (payload.type === 'control_status') {
+                return;
+            }
+
+            if (payload.type !== 'action_result' || !payload.requestId) {
+                return;
+            }
+
+            const pending = pendingControlRequests.get(payload.requestId);
+            if (!pending) {
+                return;
+            }
+
+            clearTimeout(pending.timeoutId);
+            pendingControlRequests.delete(payload.requestId);
+
+            if (payload.success) {
+                pending.resolve(payload);
+                return;
+            }
+
+            pending.reject(new Error(payload.message || '操作失败'));
+        }
+
+        function connectControlWebSocket() {
+            if (controlWsShutdownRequested || pageTeardownRequested) {
+                return;
+            }
+
+            if (controlSocket && (
+                controlSocket.readyState === WebSocket.OPEN ||
+                controlSocket.readyState === WebSocket.CONNECTING
+            )) {
+                return;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/control/ws`;
+
+            controlSocket = new WebSocket(wsUrl);
+
+            controlSocket.onopen = function () {
+                controlSocketReady = true;
+                controlReconnectDelay = 500;
+                if (controlReconnectTimer) {
+                    clearTimeout(controlReconnectTimer);
+                    controlReconnectTimer = null;
+                }
+            };
+
+            controlSocket.onmessage = handleControlMessage;
+
+            controlSocket.onclose = function () {
+                controlSocketReady = false;
+                controlSocket = null;
+                clearPendingControlRequests('控制通道已断开');
+
+                if (gestureStart && gestureStart.liveStarted) {
+                    gestureStart.liveMode = false;
+                    gestureStart.liveInterrupted = true;
+                }
+
+                if (controlWsShutdownRequested || pageTeardownRequested) {
+                    return;
+                }
+
+                scheduleControlReconnect();
+            };
+
+            controlSocket.onerror = function (error) {
+                console.error('Control websocket error:', error);
+                if (controlSocket) {
+                    controlSocket.close();
+                }
+            };
+        }
+
+        function sendControlCommand(command, timeoutMs = CONTROL_ACK_TIMEOUT) {
+            if (!controlSocketReady || !controlSocket || controlSocket.readyState !== WebSocket.OPEN) {
+                throw new Error('控制通道未连接');
+            }
+
+            const requestId = `control-${Date.now()}-${++controlRequestSequence}`;
+
+            return new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    pendingControlRequests.delete(requestId);
+                    reject(new Error('控制通道响应超时'));
+                }, timeoutMs);
+
+                pendingControlRequests.set(requestId, { resolve, reject, timeoutId });
+
+                try {
+                    controlSocket.send(JSON.stringify({
+                        ...command,
+                        requestId
+                    }));
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    pendingControlRequests.delete(requestId);
+                    reject(error);
+                }
+            });
+        }
+
+        function sendControlEvent(command) {
+            if (!controlSocketReady || !controlSocket || controlSocket.readyState !== WebSocket.OPEN) {
+                throw new Error('控制通道未连接');
+            }
+
+            controlSocket.send(JSON.stringify(command));
+        }
+
+        async function sendClickViaHttp(x, y, screenWidth, screenHeight) {
+            const response = await fetch('/api/click', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ x, y, screenWidth, screenHeight })
+            });
+            return response.json();
+        }
+
+        async function sendSwipeViaHttp(x1, y1, x2, y2, duration, screenWidth, screenHeight) {
+            const response = await fetch('/api/swipe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ x1, y1, x2, y2, duration, screenWidth, screenHeight })
+            });
+            return response.json();
+        }
+
+        async function sendClick(x, y, clientX, clientY, screenWidth, screenHeight) {
             showClickIndicator(clientX, clientY);
 
             try {
-                const response = await fetch('/api/click', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ x, y })
-                });
-                const data = await response.json();
+                let data;
+                if (controlSocketReady && controlSocket && controlSocket.readyState === WebSocket.OPEN) {
+                    data = await sendControlCommand({ action: 'click', x, y, screenWidth, screenHeight });
+                } else {
+                    connectControlWebSocket();
+                    data = await sendClickViaHttp(x, y, screenWidth, screenHeight);
+                }
+
                 if (data.success) {
                     showMessage(`✓ 已点击 (${x}, ${y})`, 'success');
                 } else {
@@ -986,16 +1210,17 @@
             }
         }
 
-        async function sendSwipe(x1, y1, x2, y2, duration) {
+        async function sendSwipe(x1, y1, x2, y2, duration, screenWidth, screenHeight) {
             try {
-                const response = await fetch('/api/swipe', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ x1, y1, x2, y2, duration })
-                });
-                const data = await response.json();
+                let data;
+                if (controlSocketReady && controlSocket && controlSocket.readyState === WebSocket.OPEN) {
+                    const timeoutMs = Math.max(CONTROL_ACK_TIMEOUT, duration + 1500);
+                    data = await sendControlCommand({ action: 'swipe', x1, y1, x2, y2, duration, screenWidth, screenHeight }, timeoutMs);
+                } else {
+                    connectControlWebSocket();
+                    data = await sendSwipeViaHttp(x1, y1, x2, y2, duration, screenWidth, screenHeight);
+                }
+
                 if (data.success) {
                     showMessage(`✓ 已滑动 (${x1}, ${y1}) → (${x2}, ${y2})`, 'success');
                 } else {
@@ -1019,6 +1244,12 @@
             coordDisplay.textContent = `X: ${mapped.x}, Y: ${mapped.y}`;
         }
 
+        function getGestureTravelDistance(start, point) {
+            const dx = point.x - start.lastClientX;
+            const dy = point.y - start.lastClientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
         function handleGestureStart(event, source) {
             if (currentScreenMode !== source) {
                 return;
@@ -1038,10 +1269,96 @@
                 source,
                 clientX: point.x,
                 clientY: point.y,
+                lastClientX: point.x,
+                lastClientY: point.y,
                 deviceX: mapped.x,
                 deviceY: mapped.y,
-                timestamp: Date.now()
+                lastDeviceX: mapped.x,
+                lastDeviceY: mapped.y,
+                screenWidth: mapped.screenWidth,
+                screenHeight: mapped.screenHeight,
+                timestamp: Date.now(),
+                travelDistance: 0,
+                liveStarted: false,
+                liveMode: false,
+                liveInterrupted: false,
+                liveLastSentX: mapped.x,
+                liveLastSentY: mapped.y,
+                liveLastSentAt: Date.now()
             };
+
+            if (controlSocketReady && controlSocket && controlSocket.readyState === WebSocket.OPEN) {
+                try {
+                    sendControlEvent({
+                        action: 'touch_start',
+                        x: mapped.x,
+                        y: mapped.y,
+                        screenWidth: mapped.screenWidth,
+                        screenHeight: mapped.screenHeight
+                    });
+                    gestureStart.liveStarted = true;
+                    gestureStart.liveMode = true;
+                } catch (error) {
+                    console.warn('Failed to send realtime touch start:', error);
+                    connectControlWebSocket();
+                }
+            } else {
+                connectControlWebSocket();
+            }
+        }
+
+        function handleGestureMove(event, source) {
+            if (!gestureStart || gestureStart.source !== source || currentScreenMode !== source) {
+                return;
+            }
+            if (event.type.startsWith('touch')) {
+                event.preventDefault();
+            }
+
+            const point = getPointFromEvent(event);
+            updateCoordinateDisplay(point.x, point.y, source);
+
+            const mapped = mapClientToDevice(point.x, point.y, source, true);
+            if (!mapped) {
+                return;
+            }
+
+            gestureStart.travelDistance += getGestureTravelDistance(gestureStart, point);
+            gestureStart.lastClientX = point.x;
+            gestureStart.lastClientY = point.y;
+            gestureStart.lastDeviceX = mapped.x;
+            gestureStart.lastDeviceY = mapped.y;
+
+            if (!gestureStart.liveMode) {
+                return;
+            }
+
+            const now = Date.now();
+            const dx = mapped.x - gestureStart.liveLastSentX;
+            const dy = mapped.y - gestureStart.liveLastSentY;
+            const movedDistance = Math.sqrt(dx * dx + dy * dy);
+            const elapsedSinceLastSend = now - gestureStart.liveLastSentAt;
+            if (movedDistance < GESTURE_MOVE_SAMPLE_DISTANCE_PX && elapsedSinceLastSend < GESTURE_MOVE_SAMPLE_INTERVAL_MS) {
+                return;
+            }
+
+            try {
+                sendControlEvent({
+                    action: 'touch_move',
+                    x: mapped.x,
+                    y: mapped.y,
+                    screenWidth: mapped.screenWidth,
+                    screenHeight: mapped.screenHeight
+                });
+                gestureStart.liveLastSentX = mapped.x;
+                gestureStart.liveLastSentY = mapped.y;
+                gestureStart.liveLastSentAt = now;
+            } catch (error) {
+                console.warn('Failed to send realtime touch move:', error);
+                gestureStart.liveMode = false;
+                gestureStart.liveInterrupted = true;
+                showMessage('✗ 控制通道已断开，本次拖动已取消', 'error');
+            }
         }
 
         async function handleGestureEnd(event, source) {
@@ -1054,7 +1371,7 @@
 
             const start = gestureStart;
             const point = getPointFromEvent(event);
-            const mapped = mapClientToDevice(point.x, point.y, source);
+            const mapped = mapClientToDevice(point.x, point.y, source, true);
             if (!mapped) {
                 gestureStart = null;
                 return;
@@ -1063,11 +1380,45 @@
             const dx = point.x - start.clientX;
             const dy = point.y - start.clientY;
             const distance = Math.sqrt(dx * dx + dy * dy);
+            const tailDx = point.x - start.lastClientX;
+            const tailDy = point.y - start.lastClientY;
+            const totalTravelDistance = start.travelDistance + Math.sqrt(tailDx * tailDx + tailDy * tailDy);
             const elapsed = Date.now() - start.timestamp;
             gestureStart = null;
 
-            if (distance < 10) {
-                await sendClick(mapped.x, mapped.y, point.x, point.y);
+            if (start.liveStarted) {
+                if (start.liveInterrupted || !controlSocketReady || !controlSocket || controlSocket.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+
+                try {
+                    const data = await sendControlCommand({
+                        action: 'touch_end',
+                        x: mapped.x,
+                        y: mapped.y,
+                        screenWidth: mapped.screenWidth,
+                        screenHeight: mapped.screenHeight
+                    });
+
+                    if (!data.success) {
+                        showMessage('✗ 拖动失败: ' + data.message, 'error');
+                        return;
+                    }
+
+                    if (distance < GESTURE_CLICK_THRESHOLD_PX && totalTravelDistance < GESTURE_CLICK_THRESHOLD_PX) {
+                        showClickIndicator(point.x, point.y);
+                        showMessage(`✓ 已点击 (${mapped.x}, ${mapped.y})`, 'success');
+                    } else {
+                        showMessage(`✓ 已实时滑动 (${start.deviceX}, ${start.deviceY}) → (${mapped.x}, ${mapped.y})`, 'success');
+                    }
+                } catch (error) {
+                    showMessage('✗ 实时拖动失败: ' + error.message, 'error');
+                }
+                return;
+            }
+
+            if (distance < GESTURE_CLICK_THRESHOLD_PX && totalTravelDistance < GESTURE_CLICK_THRESHOLD_PX) {
+                await sendClick(mapped.x, mapped.y, point.x, point.y, mapped.screenWidth, mapped.screenHeight);
                 return;
             }
 
@@ -1077,8 +1428,49 @@
                 start.deviceY,
                 mapped.x,
                 mapped.y,
-                duration
+                duration,
+                start.screenWidth,
+                start.screenHeight
             );
+        }
+
+        function handleGestureCancel() {
+            if (!gestureStart) {
+                return;
+            }
+
+            const start = gestureStart;
+            gestureStart = null;
+
+            if (!start.liveStarted || !controlSocketReady || !controlSocket || controlSocket.readyState !== WebSocket.OPEN) {
+                return;
+            }
+
+            try {
+                sendControlEvent({
+                    action: 'touch_end',
+                    x: start.lastDeviceX,
+                    y: start.lastDeviceY,
+                    screenWidth: start.screenWidth,
+                    screenHeight: start.screenHeight
+                });
+            } catch (error) {
+                console.warn('Failed to cancel active realtime touch:', error);
+            }
+        }
+
+        function handleGlobalGestureMove(event) {
+            if (!gestureStart) {
+                return;
+            }
+            handleGestureMove(event, gestureStart.source);
+        }
+
+        function handleGlobalGestureEnd(event) {
+            if (!gestureStart) {
+                return;
+            }
+            void handleGestureEnd(event, gestureStart.source);
         }
 
         async function refreshScreenshot(notify = true) {
@@ -1584,6 +1976,7 @@
                 return;
             }
 
+            handleGestureCancel();
             streamShutdownRequested = false;
             currentScreenMode = 'stream';
             resetStreamDecodeState();
@@ -1603,6 +1996,7 @@
         }
 
         function stopStreamMode(silent = false) {
+            handleGestureCancel();
             streamShutdownRequested = true;
             if (streamReconnectTimer) {
                 clearTimeout(streamReconnectTimer);
@@ -1674,16 +2068,8 @@
             });
 
             targetElement.addEventListener('mousedown', event => handleGestureStart(event, source));
-            targetElement.addEventListener('mouseup', event => handleGestureEnd(event, source));
-            targetElement.addEventListener('mouseleave', () => {
-                gestureStart = null;
-            });
-
             targetElement.addEventListener('touchstart', event => handleGestureStart(event, source), { passive: false });
-            targetElement.addEventListener('touchend', event => handleGestureEnd(event, source), { passive: false });
-            targetElement.addEventListener('touchcancel', () => {
-                gestureStart = null;
-            }, { passive: false });
+            targetElement.addEventListener('dragstart', event => event.preventDefault());
         }
 
         document.addEventListener('DOMContentLoaded', async function () {
@@ -1696,6 +2082,12 @@
 
             bindInteraction(screenshotImg, 'screenshot');
             bindInteraction(streamCanvas, 'stream');
+            window.addEventListener('mousemove', handleGlobalGestureMove);
+            window.addEventListener('mouseup', handleGlobalGestureEnd);
+            window.addEventListener('touchmove', handleGlobalGestureMove, { passive: false });
+            window.addEventListener('touchend', handleGlobalGestureEnd, { passive: false });
+            window.addEventListener('touchcancel', handleGestureCancel, { passive: false });
+            window.addEventListener('blur', handleGestureCancel);
             loadStreamFpsPreference();
 
             streamSupported = await checkWebCodecsSupport();
@@ -1986,6 +2378,7 @@
             }
             pageTeardownRequested = true;
             streamShutdownRequested = true;
+            controlWsShutdownRequested = true;
             logWsShutdownRequested = true;
 
             if (currentScreenMode === 'stream') {
@@ -1995,6 +2388,8 @@
                 closeStreamDecoder();
             }
 
+            handleGestureCancel();
+            closeControlWebSocket(true);
             closeLogWebSocket();
         }
 
@@ -2005,6 +2400,8 @@
         if (document.getElementById('log-terminal')) {
             connectWebSocket();
         }
+
+        connectControlWebSocket();
 
 
         // MAA Tasks Functions

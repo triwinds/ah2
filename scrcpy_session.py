@@ -48,6 +48,15 @@ def parse_h264_nal_type(nal: bytes) -> Optional[int]:
     return nal[start_code_length] & 0x1F
 
 
+def _is_expected_socket_close_error(error: Exception) -> bool:
+    errno = getattr(error, 'errno', None)
+    if errno == 9:
+        return True
+
+    message = str(error).lower()
+    return 'file descriptor was closed in another greenlet' in message or 'bad file descriptor' in message
+
+
 def extract_complete_nals(buffer: bytearray) -> list[bytes]:
     first_start = _find_start_code(buffer)
     if first_start < 0:
@@ -294,6 +303,9 @@ class ScrcpySession:
                 if message:
                     logger.info('scrcpy[%s] %s', self.serial, message)
         except Exception as error:
+            if self._stopping or self.server_stream is None or _is_expected_socket_close_error(error):
+                logger.debug('scrcpy server stream closed for %s: %s', self.serial, error)
+                return
             logger.warning('scrcpy server stream failed for %s: %s', self.serial, error)
             self.stop(reason=f'scrcpy server stream error: {error}')
 
@@ -310,6 +322,9 @@ class ScrcpySession:
                 for nal in extract_complete_nals(self._annexb_buffer):
                     self._handle_nal(nal)
         except Exception as error:
+            if self._stopping or self.video_sock is None or _is_expected_socket_close_error(error):
+                logger.debug('scrcpy video stream closed for %s: %s', self.serial, error)
+                return
             logger.warning('scrcpy video stream failed for %s: %s', self.serial, error)
             self.stop(reason=f'scrcpy video stream error: {error}')
 
