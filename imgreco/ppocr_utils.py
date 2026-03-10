@@ -87,6 +87,69 @@ class PPOcrONNXAdapter:
         self.ocr.set_char_whitelist(chars)
 
 
+class RapidOCRAdapter:
+    def __init__(self, ocr, default_use_det=True):
+        self.ocr = ocr
+        self.default_use_det = default_use_det
+
+    def __call__(self, img, use_det=None, use_cls=True, use_rec=True, drop_score=0.5,
+                 box_thresh=None, unclip_ratio=None, **kwargs):
+        if use_det is None:
+            use_det = self.default_use_det
+
+        if not use_rec:
+            return PPOcrONNXOutput(boxes=[] if use_det else None)
+
+        result = self.ocr(
+            img,
+            use_det=use_det,
+            use_cls=use_cls,
+            use_rec=use_rec,
+            text_score=drop_score,
+            box_thresh=0.5 if box_thresh is None else box_thresh,
+            unclip_ratio=1.6 if unclip_ratio is None else unclip_ratio,
+        )
+        return PPOcrONNXOutput(
+            txts=list(result.txts or []),
+            scores=list(result.scores or []),
+            boxes=None if getattr(result, 'boxes', None) is None else list(result.boxes),
+        )
+
+    def detect_and_ocr(self, img, drop_score=0.3, box_thresh=0.1, unclip_ratio=1.6):
+        result = self.ocr(
+            img,
+            use_det=True,
+            use_cls=True,
+            use_rec=True,
+            text_score=drop_score,
+            box_thresh=box_thresh,
+            unclip_ratio=unclip_ratio,
+        )
+        if not result.txts or not result.scores or result.boxes is None:
+            return []
+        return [
+            OcrResult(text, score, box)
+            for text, score, box in zip(result.txts, result.scores, result.boxes)
+        ]
+
+    def ocr_single_line(self, img):
+        result = self.ocr(img, use_det=False, use_cls=False, use_rec=True)
+        if not result.txts or not result.scores:
+            return None
+        return result.txts[0], result.scores[0]
+
+    def ocr_lines(self, img_list):
+        results = []
+        for img in img_list:
+            result = self.ocr_single_line(img)
+            results.append([result] if result else [])
+        return results
+
+    def set_char_whitelist(self, chars):
+        # RapidOCR Python API does not expose runtime whitelist updates.
+        return None
+
+
 @lru_cache(1)
 def get_ppocr():
     from ppocronnx.predict_system import TextSystem
@@ -95,12 +158,14 @@ def get_ppocr():
 
 @lru_cache(1)
 def get_rapidocr():
-    return PPOcrONNXAdapter(get_ppocr())
+    from rapidocr import RapidOCR
+    return RapidOCRAdapter(RapidOCR())
 
 
 @lru_cache(1)
 def get_no_det_rapidocr():
-    return PPOcrONNXAdapter(get_ppocr(), default_use_det=False)
+    from rapidocr import RapidOCR
+    return RapidOCRAdapter(RapidOCR(), default_use_det=False)
 
 
 def ocr_for_single_line(img) -> str:
