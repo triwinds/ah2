@@ -301,6 +301,32 @@ class StageNavigator(AddonBase):
             else:
                 self.logger.error('未找到目标，是否未开放关卡？')
 
+    def _enter_battle_terminal(self):
+        import imgreco.main
+
+        self.addon(CommonAddon).back_to_main()
+        self.logger.info('进入作战')
+        self.tap_quadrilateral(imgreco.main.get_ballte_corners(self.screenshot()))
+        self.delay(TINY_WAIT)
+
+    def _goto_stage_builtin_with_ocr(self, stage, path):
+        import imgreco.common
+        import imgreco.map
+
+        self._enter_battle_terminal()
+        if path[0] == 'main':
+            vw, vh = imgreco.common.get_vwvh(self.viewport)
+            self.tap_rect((16.328*vw, 90.417*vh, 20.469*vw, 95.972*vh))
+            self.find_and_tap_episode_by_ocr(int(path[1][2:]))
+            self.find_and_tap_stage_by_ocr(path[1], path[2])
+        elif path[0] == 'material' or path[0] == 'soc':
+            self.logger.info('选择类别')
+            self.tap_rect(imgreco.map.get_daily_menu_entry(self.viewport, path[0]))
+            self.find_and_tap_daily(path[0], path[1])
+            self.find_and_tap_stage_by_ocr(path[1], path[2])
+        else:
+            raise NotImplementedError()
+
     @navigator('builtin')
     def is_stage_supported_builtin(self, c_id):
         result = is_stage_supported_ocr(c_id)
@@ -308,22 +334,22 @@ class StageNavigator(AddonBase):
 
     @is_stage_supported_builtin.navigate
     def goto_stage_builtin(self, stage):
-        import imgreco.common
-        import imgreco.main
-        import imgreco.map
         path = get_stage_path(stage)
-        self.addon(CommonAddon).back_to_main()
-        self.logger.info('进入作战')
-        self.tap_quadrilateral(imgreco.main.get_ballte_corners(self.screenshot()))
-        self.delay(TINY_WAIT)
-        if path[0] == 'main':
-            from Arknights.addons.contrib.maa.maa_cli import maa_fight
-            maa_fight(stage, 0)
-        elif path[0] == 'material' or path[0] == 'soc':
-            from Arknights.addons.contrib.maa.maa_cli import maa_fight
-            maa_fight(stage, 0)
-        else:
+        if path is None:
             raise NotImplementedError()
+
+        self._enter_battle_terminal()
+        try:
+            from Arknights.addons.contrib.maa.maa_python import maa_fight
+
+            maa_fight(stage, 0)
+        except Exception as exc:
+            self.logger.warning(
+                'MAA navigation failed for %s: %s; falling back to OCR navigation',
+                stage,
+                exc,
+            )
+            self._goto_stage_builtin_with_ocr(stage, path)
 
     def navigate_and_combat(self,  # 完整的战斗模块
                             c_id: str,  # 选择的关卡

@@ -99,7 +99,7 @@ class StartSpStageAddon(AddonBase):
             if query_only:
                 return False
             raise RuntimeError(f'无效的关卡: {stage_code}')
-        from Arknights.addons.contrib.maa.maa_cli import maa_fight
+        from Arknights.addons.contrib.maa.maa_python import maa_fight
         maa_fight(stage_code, 0)
 
     def nav_and_combat(self, target_stage_code, times=1000):

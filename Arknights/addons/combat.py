@@ -392,7 +392,7 @@ class CombatAddon(AddonBase):
                            c_id=None,  # 待战斗的关卡编号
                            **kwargs):
         self.logger.info('maa 开始战斗')
-        from Arknights.addons.contrib.maa.maa_cli import maa_fight
+        from Arknights.addons.contrib.maa.maa_python import maa_fight
         res = maa_fight(None, desired_count)
         if res['stage_code']:
             self.stage_count[res['stage_code']] = res['times']
@@ -476,5 +476,4 @@ class CombatAddon(AddonBase):
         with self.helper.frontend.context:
             self.combat_on_current_stage(count)
         return 0
-
 

@@ -464,7 +464,7 @@ def maa_startup_with_retry(
     for attempt in range(max_retry):
         try:
             logger.info(f"MAA startup with retry attempt {attempt + 1}/{max_retry}")
-            from Arknights.addons.contrib.maa.maa_cli import maa_startup
+            from Arknights.addons.contrib.maa.maa_python import maa_startup
 
             maa_startup(timeout=600)
 

@@ -152,7 +152,7 @@ class ActivityAddOn(AddonBase):
             return self._run(target_stage_code, query_only)
         except:
             self.logger.info('try to nav with maa...')
-            from Arknights.addons.contrib.maa.maa_cli import maa_fight
+            from Arknights.addons.contrib.maa.maa_python import maa_fight
             res = maa_fight(target_stage_code, 0)
             return not res.get('error', False)
 
