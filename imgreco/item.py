@@ -266,7 +266,7 @@ def do_num_ocr(numimg: Image):
 
 def get_quantity(itemimg, item_id=None):
     # richlogger = get_logger(__name__)
-    numimg = imgops.scalecrop(itemimg, 0.40, 0.71, 0.86, 0.86).convert('L')
+    numimg = imgops.scalecrop(itemimg, 0.40, 0.71, 0.86, 0.86)
     return do_num_ocr(numimg)
     # # thr = 110 if item_id != '30024' else 120
     # numimg = crop_blackedge(numimg)
