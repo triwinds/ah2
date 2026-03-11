@@ -31,6 +31,7 @@ from web_admin import WebAdmin
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None  # Will be initialized in main()
 grab_red_ticket = False
+ENABLE_AUTO_CHIPS = False
 CONFIG_FILE = Path(__file__).parent / 'config.json'
 TASK_EXECUTION_LOCK_FILE = app.cache_path.joinpath('schedule_do_works.lock')
 
@@ -107,6 +108,18 @@ def do_jiaomie():
             task_info.get('time')
 
 
+def run_auto_chips_if_enabled():
+    if not ENABLE_AUTO_CHIPS:
+        logger.info('AutoChips disabled in linux schedule, skip.')
+        return
+    helper.addon(AutoChips).run()
+
+
+def _run_stage_with_maa(stage_code: str | None, times: int):
+    target_stage = 'LATEST' if stage_code is None else stage_code
+    return helper.addon(StageNavigator).navigate_and_combat(target_stage, times)
+
+
 def clear_sanity():
     now = datetime.now().astimezone(tz=timezone(timedelta(hours=4)))
     wd = now.weekday()
@@ -116,7 +129,7 @@ def clear_sanity():
     red_ticket_day = {0, 3, 5, 6}
     # Monday = 0, Sunday = 6
     if wd in red_ticket_day and grab_red_ticket:
-        helper.addon(AutoChips).run()
+        run_auto_chips_if_enabled()
         clear_sanity_by_red_ticket()
         clear_sanity_by_item(True)
     elif wd == 1:
@@ -130,7 +143,7 @@ def clear_sanity():
 
 def clear_sanity_by_red_ticket():
     logger.info('clear_sanity_by_red_ticket')
-    helper.addon(StageNavigator).navigate_and_combat('AP-5', 1000)
+    _run_stage_with_maa('AP-5', 1000)
 
 
 def clear_sanity_by_item(only_activity=False):
@@ -141,14 +154,17 @@ def clear_sanity_by_item(only_activity=False):
 
     if common_config.sanity_mode == 'grass':
         from Arknights.addons.contrib.grass_on_aog import GrassAddOn
-        if not helper.addon(GrassAddOn).run():
-            helper.addon(AutoChips).run()
-            helper.addon(StageNavigator).navigate_and_combat('1-7', 1000)
+        stage = helper.addon(GrassAddOn).choose_stage()
+        if stage:
+            _run_stage_with_maa(stage, 1000)
+        else:
+            run_auto_chips_if_enabled()
+            _run_stage_with_maa('1-7', 1000)
     elif common_config.sanity_mode == '1-7':
-        helper.addon(AutoChips).run()
-        helper.addon(StageNavigator).navigate_and_combat(common_config.sanity_mode, 1000)
+        run_auto_chips_if_enabled()
+        _run_stage_with_maa(common_config.sanity_mode, 1000)
     else:
-        helper.addon(StageNavigator).navigate_and_combat(common_config.sanity_mode, 1000)
+        _run_stage_with_maa(common_config.sanity_mode, 1000)
 
 
 def escape_markdown(

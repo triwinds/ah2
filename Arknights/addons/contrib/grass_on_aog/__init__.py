@@ -175,8 +175,7 @@ def get_t3_item_map_from_yituliu():
 
 
 class GrassAddOn(AddonBase):
-    @custom_stage('grass', ignore_count=True, title='一键长草', description='检查库存中最少的蓝材料, 然后去 aog 上推荐的地图刷材料')
-    def run(self, *args):
+    def choose_stage(self):
         exclude_names = app.config.grass_on_aog.exclude
         self.logger.info('不刷以下材料: %r', exclude_names)
         self.logger.info('加载库存信息...')
@@ -194,7 +193,11 @@ class GrassAddOn(AddonBase):
                           'count': my_items.get(item['itemId'], 0) or 0,
                           'rarity': item['rarity']})
         my_items_with_count = sorted(my_items_with_count, key=lambda x: x['count'])
-        stage = get_stage(t3_item_map, my_items_with_count, prefer_activity=app.config.grass_on_aog.prefer_activity_stage)
+        return get_stage(t3_item_map, my_items_with_count, prefer_activity=app.config.grass_on_aog.prefer_activity_stage)
+
+    @custom_stage('grass', ignore_count=True, title='一键长草', description='检查库存中最少的蓝材料, 然后去 aog 上推荐的地图刷材料')
+    def run(self, *args):
+        stage = self.choose_stage()
         if stage:
             return self.addon(StageNavigator).navigate_and_combat(stage, 1000)
 

@@ -393,7 +393,7 @@ class CombatAddon(AddonBase):
                            **kwargs):
         self.logger.info('maa 开始战斗')
         from Arknights.addons.contrib.maa.maa_cli import maa_fight
-        res = maa_fight(None, desired_count)
+        res = maa_fight(c_id, desired_count)
         if res['stage_code']:
             self.stage_count[res['stage_code']] = res['times']
             for drops in res['total_drops']:
@@ -414,12 +414,12 @@ class CombatAddon(AddonBase):
             True 完成指定次数的作战
             False 理智不足, 退出作战
         '''
+        if desired_count == 0:
+            return c_id, 0
+
         if os.name != 'nt':
             # linux 环境下使用 maa 战斗
             return self.maa_combat_on_current_stage(desired_count, c_id, **kwargs)
-
-        if desired_count == 0:
-            return c_id, 0
         self.operation_time = []
         count = 0
         remain = 0
@@ -476,5 +476,3 @@ class CombatAddon(AddonBase):
         with self.helper.frontend.context:
             self.combat_on_current_stage(count)
         return 0
-
-
