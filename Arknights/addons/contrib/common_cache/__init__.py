@@ -137,16 +137,29 @@ def load_inventory(helper: BaseAutomator, force_update=False, cache_key='%Y--%V'
     return update_inventory(helper)
 
 
+def _merge_inventory_data(merged_data, latest_data):
+    for item_id, quantity in latest_data.items():
+        if item_id not in merged_data:
+            merged_data[item_id] = quantity
+            continue
+        if quantity is not None:
+            merged_data[item_id] = quantity
+    return merged_data
+
+
 def update_inventory(helper: BaseAutomator, cache_key='%Y--%V'):
     from Arknights.addons.inventory import InventoryAddon
     retry_count = 0
     data = None
+    merged_data = {}
     while retry_count < 3:
         retry_count += 1
-        data = helper.addon(InventoryAddon).get_inventory_items(True, False)
-        if None not in data.values():
+        latest_data = helper.addon(InventoryAddon).get_inventory_items(True, False)
+        merged_data = _merge_inventory_data(merged_data, latest_data)
+        data = merged_data
+        if None not in merged_data.values():
             break
-        helper.logger.info('Inventory data contains None data, retry...')
+        helper.logger.info('Inventory data contains None data after merge, retry...')
     if data is None:
         helper.logger.error('Failed to update inventory data.')
         raise Exception('Failed to update inventory data.')
@@ -158,4 +171,3 @@ def update_inventory(helper: BaseAutomator, cache_key='%Y--%V'):
 
 def get_activity_infos():
     return load_game_data('activity_table')['basicInfo']
-
