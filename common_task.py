@@ -111,7 +111,7 @@ def start_maa_process(helper: BaseAutomator):
                         logger.error(f'Failed to restart game: {message}')
                 else:
                     logger.info('Game is in front, run maa startup...')
-                    from Arknights.addons.contrib.maa.maa_python import maa_startup
+                    from Arknights.addons.contrib.maa.maa_cli import maa_startup
                     maa_startup()
                 continue
 
@@ -126,18 +126,25 @@ def start_maa_process(helper: BaseAutomator):
 
 def start_maa_direct(helper: BaseAutomator):
     """
-    直接调用 MAA Python 任务，不使用 multiprocessing.Process，
-    避免进程通信导致的卡顿问题。
+    直接调用 MAA 任务，不使用 multiprocessing.Process
+    这样可以避免进程通信导致的卡顿问题
     """
-    from Arknights.addons.contrib.maa.maa_python import maa_startup, run_all_tasks_result
+    from Arknights.addons.contrib.maa.maa_cli import init_maa_cli, run_all_tasks
     
     retry_count = 0
     while retry_count < 3:
         try:
-            logger.info('开始执行 MAA Python 任务...')
-            maa_result = run_all_tasks_result()
-            logger.info(f'MAA 任务完成: {maa_result.summary_text()}')
-            return maa_result.to_dict()
+            # 确保 MAA CLI 已初始化
+            init_maa_cli()
+            
+            # 直接运行 MAA 任务
+            logger.info('开始执行 MAA 任务...')
+            summary = run_all_tasks()
+            
+            # 返回成功结果
+            maa_result = {'ok': True, 'summary': summary}
+            logger.info(f'MAA 任务完成: {summary}')
+            return maa_result
             
         except Exception as e:
             retry_count += 1
@@ -153,6 +160,7 @@ def start_maa_direct(helper: BaseAutomator):
                     logger.error(f'重启游戏失败: {message}')
             else:
                 logger.info('游戏在前台，尝试运行 MAA startup...')
+                from Arknights.addons.contrib.maa.maa_cli import maa_startup
                 try:
                     maa_startup()
                 except Exception as startup_error:

@@ -26,8 +26,6 @@
 
 请参考 [wiki/从源代码安装]。
 
-`maa python` 的独立运行时目录、自动下载行为和手动预下载命令见 [docs/maa_python_runtime.md](docs/maa_python_runtime.md)。
-
 ###  环境与分辨率
 > 💡 由于游戏内文字渲染机制问题，分辨率过低可能影响识别效果，建议分辨率高度 1080 或以上。
 
