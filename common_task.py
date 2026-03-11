@@ -19,6 +19,7 @@ from Arknights.addons.contrib.emulator_manager import start_and_login_arknights
 
 logger = logging.getLogger(__file__)
 task_cache_path = app.cache_path.joinpath('common_task_cache.json')
+MAA_TASK_TIMEOUT_SECONDS = 3600
 
 
 def load_cache():
@@ -67,22 +68,22 @@ def do_maa_tasks(queue, log_queue=None):
 def start_maa_process(helper: BaseAutomator):
     from multiprocessing import Process, Queue
     import logging.handlers
-    
+
     retry_count = 0
     while retry_count < 3:
         queue = Queue()
         log_queue = Queue()
-        
+
         # Setup log listener to forward logs from child process to main process logger
         root_logger = logging.getLogger()
         listener = logging.handlers.QueueListener(log_queue, *root_logger.handlers)
         listener.start()
-        
+
         try:
             proc = Process(target=do_maa_tasks, args=(queue, log_queue))
             proc.start()
             proc.join(timeout=3600)
-            
+
             if proc.is_alive():
                 logger.warning('MAA任务超时，强制终止进程')
                 proc.terminate()  # 先尝试正常终止
@@ -100,7 +101,7 @@ def start_maa_process(helper: BaseAutomator):
                 retry_count += 1
                 maa_result = f'maa 获取结果失败: {str(e)}'
                 logger.warning(f'获取结果失败: {str(e)}')
-            
+
             if isinstance(maa_result, str) and 'Error' in maa_result:
                 retry_count += 1
                 from util.adb_utils import check_game_is_in_front
@@ -119,7 +120,7 @@ def start_maa_process(helper: BaseAutomator):
             if proc.exitcode is None:
                 proc.close()
             return maa_result
-            
+
         finally:
             listener.stop()
 
@@ -136,12 +137,12 @@ def start_maa_direct(helper: BaseAutomator):
         try:
             # 确保 MAA CLI 已初始化
             init_maa_cli()
-            
+
             # 直接运行 MAA 任务
             logger.info('开始执行 MAA 任务...')
-            summary = run_all_tasks()
-            
-            # 返回成功结果
+            summary = run_all_tasks(timeout=MAA_TASK_TIMEOUT_SECONDS)
+            if summary.startswith('Task timed out after '):
+                raise TimeoutError(summary)
             maa_result = {'ok': True, 'summary': summary}
             logger.info(f'MAA 任务完成: {summary}')
             return maa_result

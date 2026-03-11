@@ -263,8 +263,8 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
     return summary.strip()
 
 
-def run_all_tasks():
-    return run_task('my_tasks')
+def run_all_tasks(timeout: int = 3600):
+    return run_task('my_tasks', timeout=timeout)
 
 
 def execute_maa_command(cmd: str|list, timeout: int = 1800):
