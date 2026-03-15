@@ -418,6 +418,16 @@
                     </div>
                 </div>
 
+                <div style="margin-bottom: 20px;">
+                    <div class="toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="auto-chips-toggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label">🧩 启用 Auto Chips</span>
+                    </div>
+                </div>
+
                 <div class="btn-group">
                     <button class="btn-primary" onclick="saveConfig()">💾 保存配置</button>
                     <button class="btn-success" onclick="loadConfig()">🔄 刷新配置</button>
@@ -2164,6 +2174,9 @@
                     // Set grab red ticket
                     document.getElementById('grab-red-ticket-toggle').checked = config.grab_red_ticket;
 
+                    // Set auto chips
+                    document.getElementById('auto-chips-toggle').checked = Boolean(config.auto_chips);
+
                     showMessage('✓ 配置已加载', 'success');
                 } else {
                     showMessage('✗ 加载配置失败: ' + data.message, 'error');
@@ -2192,6 +2205,7 @@
 
                 const rougeLike = document.getElementById('rouge-like-toggle').checked;
                 const grabRedTicket = document.getElementById('grab-red-ticket-toggle').checked;
+                const autoChips = document.getElementById('auto-chips-toggle').checked;
 
                 const response = await fetch('/api/config', {
                     method: 'POST',
@@ -2201,7 +2215,8 @@
                     body: JSON.stringify({
                         sanity_mode: sanityMode,
                         rouge_like: rougeLike,
-                        grab_red_ticket: grabRedTicket
+                        grab_red_ticket: grabRedTicket,
+                        auto_chips: autoChips
                     })
                 });
 

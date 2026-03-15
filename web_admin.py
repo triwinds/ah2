@@ -23,16 +23,26 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryLogHandler(logging.Handler):
-    def __init__(self, capacity=1000):
-        super().__init__()
+    def __init__(self, capacity=1000, default_level=logging.INFO, debug_logger_names=None):
+        super().__init__(level=logging.NOTSET)
         self.capacity = capacity
+        self.default_level = default_level
         self.buffer = collections.deque(maxlen=capacity)
+        self.debug_logger_names = tuple(debug_logger_names or ())
         self.sockets = set()
         self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    def _is_debug_passthrough_logger(self, logger_name: str) -> bool:
+        return any(
+            logger_name == name or logger_name.startswith(f'{name}.')
+            for name in self.debug_logger_names
+        )
 
     def emit(self, record):
         try:
             if record.name == 'geventwebsocket.handler':
+                return
+            if record.levelno < self.default_level and not self._is_debug_passthrough_logger(record.name):
                 return
             msg = self.format(record)
             self.buffer.append(msg)
@@ -88,8 +98,7 @@ class WebAdmin:
         self._last_manual_trigger_time = None
 
         # Setup logging handler
-        self.log_handler = MemoryLogHandler()
-        self.log_handler.setLevel(logging.INFO)
+        self.log_handler = MemoryLogHandler(debug_logger_names={'MAA.output'})
         logging.getLogger().addHandler(self.log_handler)
         
         # Setup MAA logger
@@ -559,12 +568,14 @@ class WebAdmin:
                 sanity_mode = data.get('sanity_mode')
                 rouge_like = data.get('rouge_like')
                 grab_red_ticket = data.get('grab_red_ticket')
+                auto_chips = data.get('auto_chips')
                 
                 # Update config
                 success = update_config_func(
                     sanity_mode=sanity_mode,
                     rouge_like=rouge_like,
-                    grab_red_ticket_val=grab_red_ticket
+                    grab_red_ticket_val=grab_red_ticket,
+                    auto_chips=auto_chips
                 )
                 
                 if success:

@@ -1,5 +1,6 @@
 {
-  "sanity_mode": "grass",
+  "sanity_mode": "1-7",
   "rouge_like": false,
-  "grab_red_ticket": false
+  "grab_red_ticket": false,
+  "auto_chips": false
 }

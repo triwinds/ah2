@@ -124,17 +124,11 @@ atexit.register(close_all_processes)
 
 class LogParser:
     def __init__(self):
-        self.log_pattern = re.compile(r"^\[(?P<time>.*?)\s+(?P<level>TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\]\s*(?P<message>.*)$")
-        self.valuable_keywords = [
-            "Start", "Completed", "Failed", "Stop",  # Task status
-            "Recruit", "Tags", "Result",  # Recruitment
-            "Fight", "Drops", "Stage",  # Battle
-            "Facility", "Operator",  # Infrastructure
-            "Sanity", "Potion", "Stone" # Sanity
-        ]
-        self.ignore_keywords = [
-            "Screenshot", "Recognized", "Processing", "Wait", "Sleep"
-        ]
+        # maa-cli v0.7.x aligns INFO/WARN as "INFO ]"/"WARN ]", so the
+        # level field needs to tolerate trailing spaces before ']'.
+        self.log_pattern = re.compile(
+            r"^\[(?P<time>.*?)\s+(?P<level>TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s*\]\s*(?P<message>.*)$"
+        )
         # Buffer for multi-line messages
         self.current_log = None
         self.continuation_lines = []
@@ -161,9 +155,8 @@ class LogParser:
                 # Append to current log entry
                 self.continuation_lines.append(line)
             else:
-                # Orphan line (no current log context), log as-is if valuable
-                if any(k in line for k in self.valuable_keywords):
-                    maa_output_logger.info(f"[MAA] {line.strip()}")
+                # Keep unexpected lines visible in the dedicated MAA log tab
+                maa_output_logger.info(f"[MAA] {line.strip()}")
 
     def _flush_current_log(self):
         """Flush the current buffered log entry"""
@@ -183,9 +176,7 @@ class LogParser:
         elif level == 'WARN':
             maa_output_logger.warning(f"[MAA] {message}")
         elif level == 'INFO':
-            # Filter INFO logs
-            if self._is_valuable(message):
-                maa_output_logger.info(f"[MAA] {message}")
+            maa_output_logger.info(f"[MAA] {message}")
         elif level == 'DEBUG':
             maa_output_logger.debug(f"[MAA] {message}")
         elif level == 'TRACE':
@@ -199,17 +190,24 @@ class LogParser:
         """Call this when stream ends to flush any remaining log"""
         self._flush_current_log()
 
-    def _is_valuable(self, message: str) -> bool:
-        # Check if message contains any valuable keywords
-        if any(k in message for k in self.valuable_keywords):
-            # Ensure it's not in the ignore list (double check)
-            if not any(k in message for k in self.ignore_keywords):
-                return True
-        return False
+
+def _log_maa_summary(summary: str):
+    summary = summary.strip()
+    if not summary:
+        return
+    maa_output_logger.info(f"[MAA] Summary\n{summary}")
 
 
 def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1小时
-    p = subprocess.Popen([maa_path, 'run', task_name, '-vvv'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(
+        [maa_path, 'run', task_name, '-vvv'],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+        bufsize=1,
+    )
     start_time = time.time()
     processes.append(p)
     sel = selectors.DefaultSelector()
@@ -218,19 +216,21 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
     
     parser = LogParser()
     summary_flag = False
-    summary = ""
-    ok = True
+    summary_lines = []
+    active_streams = {p.stdout, p.stderr}
     
     try:
-        while ok:
+        while active_streams or p.poll() is None:
             # 使用超时参数进行select
             for key, mask in sel.select(timeout=1.0):  # 每1秒检查一次超时
-                line = key.fileobj.readline().decode()
-                if key.fileobj is p.stdout and (not line or line == ""):
-                    ok = False
-                    break
-                
-                if key.fileobj is p.stdout:
+                stream = key.fileobj
+                line = stream.readline()
+                if line == '':
+                    sel.unregister(stream)
+                    active_streams.discard(stream)
+                    continue
+
+                if stream is p.stdout:
                     # stdout usually contains summary and control info
                     if line.startswith('[INFO]'):
                         continue
@@ -238,7 +238,7 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
                         summary_flag = True
                         continue
                     if summary_flag and not line.startswith('-----------------'):
-                        summary += line
+                        summary_lines.append(line.rstrip('\n'))
                 else:
                     # stderr contains the logs
                     parser.parse(line)
@@ -251,12 +251,28 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
     except subprocess.TimeoutExpired:
         logger.error(f"Task {task_name} timed out after {timeout} seconds")
         p.terminate()
+        maa_output_logger.error(f"[MAA] Task {task_name} timed out after {timeout} seconds")
         return f"Task timed out after {timeout} seconds"
     finally:
         parser.finish()  # Flush any remaining buffered logs
         sel.close()
+        try:
+            if p.poll() is None:
+                p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait(timeout=5)
+        for stream in (p.stdout, p.stderr):
+            try:
+                if stream is not None:
+                    stream.close()
+            except Exception:
+                pass
         if p in processes:
             processes.remove(p)
+
+    summary = '\n'.join(summary_lines).strip()
+    _log_maa_summary(summary)
 
     if '高级资深干员' in summary:
         send_by_tg_bot('公招出 6 星了!', '公招出 6 星了!')

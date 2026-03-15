@@ -31,14 +31,14 @@ from web_admin import WebAdmin
 logger = logging.getLogger(__file__)
 helper: BaseAutomator = None  # Will be initialized in main()
 grab_red_ticket = False
-ENABLE_AUTO_CHIPS = False
+auto_chips_enabled = False
 CONFIG_FILE = Path(__file__).parent / 'config.json'
 TASK_EXECUTION_LOCK_FILE = app.cache_path.joinpath('schedule_do_works.lock')
 
 
 def load_config_from_file():
     """Load configuration from config.json file"""
-    global grab_red_ticket
+    global grab_red_ticket, auto_chips_enabled
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -49,7 +49,15 @@ def load_config_from_file():
                     common_config.rouge_like = config_data['rouge_like']
                 if 'grab_red_ticket' in config_data:
                     grab_red_ticket = config_data['grab_red_ticket']
-                logger.info(f'Loaded config: sanity_mode={common_config.sanity_mode}, rouge_like={common_config.rouge_like}, grab_red_ticket={grab_red_ticket}')
+                if 'auto_chips' in config_data:
+                    auto_chips_enabled = config_data['auto_chips']
+                logger.info(
+                    'Loaded config: '
+                    f'sanity_mode={common_config.sanity_mode}, '
+                    f'rouge_like={common_config.rouge_like}, '
+                    f'grab_red_ticket={grab_red_ticket}, '
+                    f'auto_chips={auto_chips_enabled}'
+                )
         except Exception as e:
             logger.error(f'Failed to load config file: {e}')
     else:
@@ -62,7 +70,8 @@ def save_config_to_file():
         config_data = {
             'sanity_mode': common_config.sanity_mode,
             'rouge_like': common_config.rouge_like,
-            'grab_red_ticket': grab_red_ticket
+            'grab_red_ticket': grab_red_ticket,
+            'auto_chips': auto_chips_enabled,
         }
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
@@ -78,13 +87,14 @@ def get_current_config():
     return {
         'sanity_mode': common_config.sanity_mode,
         'rouge_like': common_config.rouge_like,
-        'grab_red_ticket': grab_red_ticket
+        'grab_red_ticket': grab_red_ticket,
+        'auto_chips': auto_chips_enabled,
     }
 
 
-def update_config(sanity_mode=None, rouge_like=None, grab_red_ticket_val=None):
+def update_config(sanity_mode=None, rouge_like=None, grab_red_ticket_val=None, auto_chips=None):
     """Update configuration and save to file"""
-    global grab_red_ticket
+    global grab_red_ticket, auto_chips_enabled
     if sanity_mode is not None:
         common_config.sanity_mode = sanity_mode
         logger.info(f'Updated sanity_mode to: {sanity_mode}')
@@ -94,6 +104,9 @@ def update_config(sanity_mode=None, rouge_like=None, grab_red_ticket_val=None):
     if grab_red_ticket_val is not None:
         grab_red_ticket = grab_red_ticket_val
         logger.info(f'Updated grab_red_ticket to: {grab_red_ticket_val}')
+    if auto_chips is not None:
+        auto_chips_enabled = auto_chips
+        logger.info(f'Updated auto_chips to: {auto_chips}')
     return save_config_to_file()
 
 
@@ -109,7 +122,7 @@ def do_jiaomie():
 
 
 def run_auto_chips_if_enabled():
-    if not ENABLE_AUTO_CHIPS:
+    if not auto_chips_enabled:
         logger.info('AutoChips disabled in linux schedule, skip.')
         return
     helper.addon(AutoChips).run()
