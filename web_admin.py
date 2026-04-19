@@ -6,11 +6,13 @@ import gevent
 import gevent.lock
 import json
 import logging
+import os
 import re
 import threading
 import time
 import base64
 import collections
+import sys
 from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Optional
@@ -95,6 +97,8 @@ class WebAdmin:
         self._active_webui_touches: dict[str, dict[str, object]] = {}
         self._trigger_lock = threading.Lock()
         self._device_switch_lock = threading.Lock()
+        self._restart_lock = threading.Lock()
+        self._restart_requested = False
         self._last_manual_trigger_time = None
 
         # Setup logging handler
@@ -457,6 +461,22 @@ class WebAdmin:
                 return json.dumps({'success': True, 'message': 'Emulator stopped'})
             except Exception as e:
                 logger.error(f'Error stopping emulator: {e}')
+                return json.dumps({'success': False, 'message': str(e)})
+
+        @self.app.route('/api/server/restart', method='POST')
+        def api_server_restart():
+            bottle.response.content_type = 'application/json'
+            try:
+                if not self._schedule_process_restart():
+                    return json.dumps({'success': True, 'message': '重启请求已提交，请稍候'})
+
+                bottle.response.status = 202
+                return json.dumps({
+                    'success': True,
+                    'message': '服务将在 1 秒后重启，页面会短暂断开连接'
+                })
+            except Exception as e:
+                logger.error(f'Error restarting server: {e}')
                 return json.dumps({'success': False, 'message': str(e)})
 
         @self.app.route('/api/screenshot')
@@ -1464,7 +1484,6 @@ class WebAdmin:
 
     def _get_dashboard_html(self):
         """Return the dashboard HTML"""
-        import os
         template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates', 'dashboard.html')
         try:
             with open(template_path, 'r', encoding='utf-8') as f:
@@ -1472,6 +1491,39 @@ class WebAdmin:
         except Exception as e:
             logger.error(f'Error reading dashboard template: {e}')
             return f"Error loading dashboard: {e}"
+
+    def _schedule_process_restart(self) -> bool:
+        with self._restart_lock:
+            if self._restart_requested:
+                return False
+            self._restart_requested = True
+
+        threading.Thread(target=self._restart_process_worker, daemon=True).start()
+        logger.warning('Accepted web-triggered restart request for current process.')
+        return True
+
+    def _restart_process_worker(self):
+        time.sleep(1.0)
+        logger.warning('Restarting current process via exec: %s %s', sys.executable, sys.argv)
+
+        try:
+            for handler in logging.getLogger().handlers:
+                try:
+                    handler.flush()
+                except Exception:
+                    pass
+
+            if not sys.executable:
+                raise RuntimeError('sys.executable is empty, cannot restart process')
+
+            if not sys.argv:
+                raise RuntimeError('sys.argv is empty, cannot restart process')
+
+            os.execvpe(sys.executable, [sys.executable, *sys.argv], os.environ.copy())
+        except Exception:
+            logger.exception('Failed to restart current process')
+            with self._restart_lock:
+                self._restart_requested = False
 
     def start(self):
         """Start the web server in a daemon thread"""

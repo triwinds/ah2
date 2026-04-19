@@ -91,11 +91,10 @@ def download_maa_cli():
         extracted_file = temp_extract_path.joinpath(maa_member.name)
         logger.debug(f'Extracted file location: {extracted_file}')
 
-        # Move to the target location
-        if maa_path.exists():
-            maa_path.unlink()
-        shutil.move(str(extracted_file), str(maa_path))
-        logger.info(f'Moved maa executable to {maa_path}')
+        # Replace in place only after the new binary is ready, so a failed
+        # download/extract step never leaves the target path missing.
+        os.replace(extracted_file, maa_path)
+        logger.info(f'Replaced maa executable at {maa_path}')
     finally:
         # Clean up temporary directory
         if temp_extract_path.exists():
@@ -401,17 +400,18 @@ def update_maa():
     process = subprocess.Popen([maa_path, 'self', 'update', 'beta'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
     out += err
-    if 'Error' in out.decode():
-        logger.error(f'update MAA core failed: {out.decode()}')
+    update_core_output = out.decode()
+    if process.returncode != 0 or 'error' in update_core_output.lower():
+        logger.error(f'update MAA core failed: {update_core_output}')
     else:
         logger.info('MAA core updated successfully')
     process = subprocess.Popen([maa_path, 'update'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
     out += err
-    if 'Error' in out.decode():
-        logger.error(f'update maa-cli failed: {out.decode()}')
-        logger.info('trying to reinstall maa-cli and maa...')
-        maa_path.unlink()
+    update_output = out.decode()
+    if process.returncode != 0 or 'error' in update_output.lower():
+        logger.error(f'update maa-cli failed: {update_output}')
+        logger.info('trying to reinstall maa-cli and maa without removing the current binary first...')
         download_maa_cli()
 
 

@@ -361,6 +361,9 @@
                 <button class="btn-primary" id="trigger-task-btn" onclick="triggerTask()">🚀 立即执行任务</button>
                 <button class="btn-success" onclick="startEmulator()">▶️ 启动模拟器</button>
                 <button class="btn-danger" onclick="stopEmulator()">⏹️ 关闭模拟器</button>
+                <button class="btn-primary" id="restart-server-btn"
+                    style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);"
+                    onclick="restartServer()">🔄 重启服务</button>
             </div>
         </div>
 
@@ -721,6 +724,80 @@
                 }
             } catch (error) {
                 showMessage('✗ 请求失败: ' + error.message, 'error');
+            }
+        }
+
+        function waitForServerRestart(initialDelay = 3500) {
+            let attempts = 0;
+            const maxAttempts = 20;
+
+            const probeServer = async () => {
+                attempts += 1;
+                try {
+                    const response = await fetch('/api/status', { cache: 'no-store' });
+                    if (response.ok) {
+                        window.location.reload();
+                        return;
+                    }
+                } catch (error) {
+                    // Ignore probe errors while the service is restarting.
+                }
+
+                if (attempts < maxAttempts) {
+                    setTimeout(probeServer, 1500);
+                } else {
+                    showMessage('✗ 服务重启超时，请手动刷新页面', 'error');
+                    const restartButton = document.getElementById('restart-server-btn');
+                    if (restartButton) {
+                        restartButton.disabled = false;
+                        restartButton.textContent = '🔄 重启服务';
+                    }
+                    window.__restartServerPending = false;
+                }
+            };
+
+            setTimeout(probeServer, initialDelay);
+        }
+
+        async function restartServer() {
+            if (window.__restartServerPending) {
+                showMessage('✓ 服务重启中，请稍候', 'success');
+                return;
+            }
+
+            const confirmed = window.confirm('确认重启当前调度服务吗？正在运行的任务会被中断。');
+            if (!confirmed) {
+                return;
+            }
+
+            const restartButton = document.getElementById('restart-server-btn');
+            window.__restartServerPending = true;
+            if (restartButton) {
+                restartButton.disabled = true;
+                restartButton.textContent = '⏳ 重启中...';
+            }
+
+            try {
+                const response = await fetch('/api/server/restart', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('✓ ' + (data.message || '服务正在重启'), 'success');
+                    waitForServerRestart();
+                } else {
+                    showMessage('✗ 重启失败: ' + data.message, 'error');
+                    window.__restartServerPending = false;
+                    if (restartButton) {
+                        restartButton.disabled = false;
+                        restartButton.textContent = '🔄 重启服务';
+                    }
+                }
+            } catch (error) {
+                showMessage('✗ 请求失败: ' + error.message, 'error');
+                window.__restartServerPending = false;
+                if (restartButton) {
+                    restartButton.disabled = false;
+                    restartButton.textContent = '🔄 重启服务';
+                }
             }
         }
 
