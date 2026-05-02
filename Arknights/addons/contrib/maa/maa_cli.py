@@ -3,6 +3,7 @@ import selectors
 import atexit
 import os
 import shutil
+import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict
@@ -34,6 +35,7 @@ def init_maa_cli():
     logger.info(f'maa config path: {maa_config_path}')
     shutil.copytree(my_config_path, maa_config_path, dirs_exist_ok=True)
     update_maa()
+    ensure_maa_resource_compat()
     log_maa_cli_version()
     inited = True
 
@@ -111,6 +113,74 @@ def log_maa_cli_version():
     version = subprocess.run([maa_path, 'version'], stdout=subprocess.PIPE).stdout.decode().strip()
     version = version.replace('\n', ', ')
     logger.info(f"maa-cli version: {version}")
+
+
+def _get_maa_dir(name: str) -> Path | None:
+    result = subprocess.run(
+        [maa_path, 'dir', name],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+    )
+    if result.returncode != 0:
+        logger.warning(
+            'Failed to get maa %s dir: %s',
+            name,
+            (result.stdout + result.stderr).strip(),
+        )
+        return None
+    return Path(result.stdout.strip())
+
+
+def ensure_maa_resource_compat():
+    resource_dir = _get_maa_dir('resource')
+    if resource_dir is None:
+        return
+    config_path = resource_dir / 'config.json'
+    try:
+        with config_path.open('r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        package_names = config.setdefault('packageName', {})
+        official_package = package_names.get('Official') or 'com.hypergryph.arknights'
+        changed = False
+
+        # MaaCore v6.9.0 can reach StartGameTaskPlugin with an empty client
+        # type in this environment, which expands [PackageName] to an empty
+        # string. Preserve the upstream mappings, add a fallback, and harden
+        # the local Official startup command so MAA can still launch the game.
+        if package_names.get('') != official_package:
+            package_names[''] = official_package
+            changed = True
+
+        for connection in config.get('connection', []):
+            if connection.get('configName') != 'General':
+                continue
+
+            start = connection.get('start')
+            if isinstance(start, str) and '[PackageName]/com.u8.sdk.U8UnityContext' in start:
+                connection['start'] = start.replace(
+                    '[PackageName]/com.u8.sdk.U8UnityContext',
+                    f'{official_package}/com.u8.sdk.U8UnityContext',
+                )
+                changed = True
+
+            stop = connection.get('stop')
+            if isinstance(stop, str) and '[PackageName]' in stop:
+                connection['stop'] = stop.replace('[PackageName]', official_package)
+                changed = True
+
+        if not changed:
+            return
+
+        with config_path.open('w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=4)
+            f.write('\n')
+        logger.info('Patched MAA Official resource compatibility in %s', config_path)
+    except Exception:
+        logger.exception('Failed to patch MAA resource config: %s', config_path)
 
 
 def close_all_processes():
@@ -286,17 +356,33 @@ def execute_maa_command(cmd: str|list, timeout: int = 1800):
     if isinstance(cmd, str):
         cmd = cmd.split(' ')
     logger.debug(f'execute maa command: {[maa_path, *cmd]}')
-    process = subprocess.Popen([maa_path, *cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        [maa_path, *cmd],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+    )
     try:
         out, err = process.communicate(timeout=timeout)  # 添加超时参数
     except subprocess.TimeoutExpired:
         logger.error('maa command execution timed out')
         process.terminate()  # 强制终止进程
         out, err = process.communicate()  # 获取剩余的输出
-        logger.error(f'timeout maa output: {out.decode()}, stderr: {err.decode()}')
+        logger.error(f'timeout maa output: {out}, stderr: {err}')
         raise RuntimeError('maa command execution timed out')
-    out += err
-    return out.decode()
+    output = (out or '') + (err or '')
+    if process.returncode != 0:
+        logger.error(
+            'maa command failed with exit code %s: %s',
+            process.returncode,
+            output.strip(),
+        )
+        raise RuntimeError(
+            f'maa command failed with exit code {process.returncode}: {output.strip()}'
+        )
+    return output
 
 stage_code_re = re.compile(r'^[a-zA-Z0-9-]+$')
 avemujica_re = re.compile(r'^SS-\d+$')
@@ -358,7 +444,9 @@ def maa_startup(timeout=120, client_type='Official', **kwargs):
         else:
             cmd.extend([f'--{key}', str(value)])
     logger.info(f'Executing MAA startup with command: {cmd}')
-    execute_maa_command(cmd, timeout=timeout)
+    output = execute_maa_command(cmd, timeout=timeout)
+    logger.debug(f'maa startup output: {output}')
+    return output
 
 
 
