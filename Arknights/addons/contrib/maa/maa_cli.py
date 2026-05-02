@@ -372,26 +372,52 @@ def _parse_fight_log(log: str) -> Dict:
     if 'error' in log.lower():
         result['error'] = True
 
-    # 解析关卡名称和次数
-    fight_match = re.search(r'Fight (\S+) (\d+) times', log)
+    # Recent maa-cli fight summaries can change from
+    # "Fight 1-7 6 times, drops:" to "Fight 1-7, drops:".
+    fight_match = re.search(
+        r'^Fight\s+(?P<stage>\S+)(?:\s+(?P<times>\d+)\s+times)?,\s+drops:\s*\n'
+        r'(?P<drop_lines>.*?)(?=^total drops:|\Z)',
+        log,
+        flags=re.MULTILINE | re.DOTALL,
+    )
     if fight_match:
-        result["stage_code"] = fight_match.group(1)
-        result["times"] = int(fight_match.group(2))
+        result["stage_code"] = fight_match.group('stage')
+        if fight_match.group('times') is not None:
+            result["times"] = int(fight_match.group('times'))
+        else:
+            result["times"] = len(
+                re.findall(r'^\d+\.\s*', fight_match.group('drop_lines'), re.MULTILINE)
+            )
 
     # 解析total drops
-    drops_section = re.search(r'total drops: (.*)', log)
+    drops_section = re.search(r'^total drops:\s*(.*)$', log, flags=re.MULTILINE)
     if drops_section:
-        items = drops_section.group(1).split(', ')
-        for item in items:
-            # 处理带有特殊符号的物品名称（如“勇气”胸章）
-            parts = item.split(' × ')
-            if parts:
-                result["total_drops"].append({
-                    "name": parts[0],
-                    "count": int(parts[1])
-                })
+        result["total_drops"] = _parse_drop_items(drops_section.group(1))
 
     return result
+
+
+def _parse_drop_items(text: str) -> list[Dict]:
+    drops = []
+    for item in text.split(', '):
+        item = item.strip()
+        if not item:
+            continue
+        # Split from the right so item names containing separators remain intact.
+        parts = item.rsplit(' × ', 1)
+        if len(parts) != 2:
+            logger.warning('Unable to parse MAA drop item: %s', item)
+            continue
+        try:
+            count = int(parts[1])
+        except ValueError:
+            logger.warning('Unable to parse MAA drop count: %s', item)
+            continue
+        drops.append({
+            "name": parts[0],
+            "count": count,
+        })
+    return drops
 
 
 def update_maa():
