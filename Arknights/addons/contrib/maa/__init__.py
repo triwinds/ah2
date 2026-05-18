@@ -107,6 +107,7 @@ def maa_recruit(asst: Asst):
         "refresh": True,
         "select": [5, 4, 1],
         "confirm": [5, 4, 3, 1],
+        "skip_robot": False,
         "times": 4,
     })
 

@@ -30,6 +30,7 @@ type = "Recruit"
 refresh = true
 select = [5, 4, 1]
 confirm = [5, 4, 3, 1]
+skip_robot = false
 [[tasks.variants]]
 condition = { type = "Time", start = "16:00:00", end = "20:00:00" }
 params = { times = 4, select = [5, 4, 1], confirm = [5, 4, 3, 1] }
