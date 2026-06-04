@@ -1,0 +1,17 @@
+[Unit]
+Description=AH2 Linux schedule service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/ah2
+Environment=HTTP_PROXY=http://127.0.0.1:7890
+Environment=HTTPS_PROXY=http://127.0.0.1:7890
+ExecStartPre=-/usr/bin/git -C /root/ah2 pull --ff-only
+ExecStart=/root/.local/bin/uv run python linux_schedule.py
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
