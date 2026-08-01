@@ -45,7 +45,7 @@ class root(Schema):
             skip = Field(bool, True, '跳过失误关卡', '跳过失误关卡的后续次数')
     @Namespace('作战计划')
     class plan:
-        calc_mode = EnumField(['online', 'local-aog'], 'online', '计算方式', 'online: 从企鹅物流数据统计接口获取刷图计划\nlocal-aog: 本地计算刷图计划, 使用 aog 推荐的关卡优化')
+        calc_mode = EnumField(['online', 'local-aog'], 'online', '计算方式', 'online: 从企鹅物流数据统计接口获取刷图计划\nlocal-aog: 本地计算刷图计划, 使用推荐源关卡优化')
     @Namespace('OCR 设置（即将弃用）')
     class ocr:
         backend = EnumField(['auto', 'tesseract', 'baidu'], 'auto', '默认 OCR 后端')
@@ -59,7 +59,7 @@ class root(Schema):
     class grass_on_aog:
         exclude = ListField(str, ['固源岩组'], '不刷以下材料')
         prefer_activity_stage = Field(bool, True, '优先刷活动中的关卡')
-        no_aog_data_action = Field(str, 'none', '在启用 prefer_activity_stage 且 aog 没有当前活动关卡数据的情况下的操作',
+        no_aog_data_action = Field(str, 'none', '在启用 prefer_activity_stage 且推荐源没有当前活动关卡数据的情况下的操作',
                                    'auto_t3: 刷最少的蓝材料; 1-7: 刷指定关卡; none: 无操作')
         normal_action = Field(str, 'auto_t3', '没有活动时的默认操作', 'auto_t3: 刷最少的蓝材料; 1-7: 刷指定关卡; none: 无操作')
 

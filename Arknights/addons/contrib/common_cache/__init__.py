@@ -98,14 +98,12 @@ def save_to_common_cache(cache_name: str, cache_value):
 
 
 def load_aog_data(force_update: bool = None, cache_key='%Y--%V'):
-    if force_update is None:
-        force_update = _check_is_need_to_force_update('aog_data', cache_key) \
-                       or not get_cache_path('aog_cache.json').exists()
-    url = 'https://arkonegraph.herokuapp.com/total/CN'
-    data = load_net_json_cache('aog_cache.json', url, 'utf-8', force_update)
-    if force_update:
-        update_common_cache_by_cache_time_key('aog_data', cache_key)
-    return data
+    logger.warning('load_aog_data() is deprecated and only reads an existing local aog_cache.json.')
+    filepath = get_cache_path('aog_cache.json')
+    if force_update or not filepath.exists():
+        raise RuntimeError('AOG runtime download is no longer supported; use material_recommendation instead.')
+    with open(filepath, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
 
 def check_game_data_version():

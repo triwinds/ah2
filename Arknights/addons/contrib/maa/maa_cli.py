@@ -4,6 +4,7 @@ import atexit
 import os
 import shutil
 import json
+import shlex
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict
@@ -21,6 +22,44 @@ maa_path = Path(r'D:\software\maa_cli\maa.exe') if os.name == 'nt' else Path('/r
 my_config_path = Path(os.path.realpath(os.path.dirname(__file__))).joinpath('cli_config/maa')
 processes = []
 inited = False
+
+
+class MaaCommandError(RuntimeError):
+    """A MAA CLI command exited unsuccessfully."""
+
+    def __init__(self, command, returncode: int, output: str):
+        self.command = tuple(command)
+        self.returncode = returncode
+        self.output = output or ''
+        details = self.output.strip()
+        message = f'maa command failed with exit code {returncode}'
+        if details:
+            message += f': {details}'
+        super().__init__(message)
+
+
+class MaaFightError(MaaCommandError):
+    """A MAA fight failed, including the stage that was being attempted."""
+
+    def __init__(self, stage_code: str, error: MaaCommandError):
+        self.stage_code = stage_code
+        super().__init__(error.command, error.returncode, error.output)
+        stage = stage_code or '<current stage>'
+        self.args = (f'maa fight for {stage} failed: {error}',)
+
+
+class MaaTaskError(RuntimeError):
+    """A custom MAA task returned a non-zero exit code."""
+
+    def __init__(self, task_name: str, returncode: int, output: str):
+        self.task_name = task_name
+        self.returncode = returncode
+        self.output = output or ''
+        details = self.output.strip()
+        message = f'maa task {task_name} failed with exit code {returncode}'
+        if details:
+            message += f': {details}'
+        super().__init__(message)
 
 
 def init_maa_cli():
@@ -343,6 +382,15 @@ def run_task(task_name: str, timeout: int = 3600):  # 默认超时时间设为1�
     summary = '\n'.join(summary_lines).strip()
     _log_maa_summary(summary)
 
+    if p.returncode not in (None, 0):
+        logger.error(
+            'MAA task %s failed with exit code %s: %s',
+            task_name,
+            p.returncode,
+            summary,
+        )
+        raise MaaTaskError(task_name, p.returncode, summary)
+
     if '高级资深干员' in summary:
         send_by_tg_bot('公招出 6 星了!', '公招出 6 星了!')
     return summary.strip()
@@ -354,7 +402,9 @@ def run_all_tasks(timeout: int = 3600):
 
 def execute_maa_command(cmd: str|list, timeout: int = 1800):
     if isinstance(cmd, str):
-        cmd = cmd.split(' ')
+        cmd = shlex.split(cmd)
+    else:
+        cmd = list(cmd)
     logger.debug(f'execute maa command: {[maa_path, *cmd]}')
     process = subprocess.Popen(
         [maa_path, *cmd],
@@ -379,9 +429,7 @@ def execute_maa_command(cmd: str|list, timeout: int = 1800):
             process.returncode,
             output.strip(),
         )
-        raise RuntimeError(
-            f'maa command failed with exit code {process.returncode}: {output.strip()}'
-        )
+        raise MaaCommandError(cmd, process.returncode, output)
     return output
 
 stage_code_re = re.compile(r'^[a-zA-Z0-9-]+$')
@@ -413,7 +461,13 @@ def maa_fight(stage_code: str, times=None, expiring_medicine=None, timeout=1800)
         cmds += ['--expiring-medicine', str(expiring_medicine)]
     if stage_code:
         cmds.append(stage_code)
-    output = execute_maa_command(cmds, timeout)
+    try:
+        output = execute_maa_command(cmds, timeout)
+    except MaaCommandError as error:
+        # Keep the stage in the exception.  The grass scheduler can then
+        # distinguish a bad recommendation (for example, a stage whose
+        # proxy button is still locked) from failures in unrelated tasks.
+        raise MaaFightError(stage_code, error) from error
     logger.debug(f'maa fight output: {output}')
     if times == 0:
         # wait 1 second for slow device

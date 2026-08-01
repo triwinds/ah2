@@ -1,9 +1,12 @@
 import time
 
-import requests
-from requests_cache import CachedSession
 import app
-from Arknights.addons.contrib.common_cache import load_inventory, load_aog_data, load_game_data
+from Arknights.addons.contrib.common_cache import load_inventory, load_game_data
+from Arknights.addons.contrib.material_recommendation import (
+    RecommendationError,
+    get_t3_item_ids,
+    load_stage_recommendations,
+)
 from Arknights.addons.stage_navigator import StageNavigator, custom_stage
 from automator import AddonBase
 from penguin_stats import arkplanner
@@ -11,18 +14,22 @@ import logging
 
 
 logger = logging.getLogger(__name__)
-session = CachedSession(app.cache_path.joinpath('yituliu_cache'))
+
+# MAA's Linux fight integration only automates proxy battles. A material
+# recommendation can point to a stage that exists in the global data but has
+# not yet been cleared on this account, leaving the proxy button locked.
+MAA_FALLBACK_STAGE = '1-7'
 
 desc = f"""
 {__file__}
 ==================================================================================================
-长草时用的脚本, 检查库存中最少的蓝材料, 然后去 aog 上推荐的地图刷材料.
-aog 地址: https://arkonegraph.herokuapp.com/
+长草时用的脚本, 检查库存中最少的蓝材料, 然后去推荐源给出的地图刷材料.
+默认推荐源: 一图流，失败时回退到本地缓存或企鹅物流粗略推荐.
 
 不想的刷的材料可以修改脚本中的 exclude_names.
 
 cache_key 控制缓存的频率, 默认每周读取一次库存, 如果需要手动更新缓存, 
-直接删除目录下的 aog_cache.json 和 inventory_items_cache.json 即可.
+直接删除目录下的 material_recommendation_yituliu.json 和 inventory_items_cache.json 即可.
 
 ==================================================================================================
 """
@@ -89,35 +96,47 @@ def filter_items_with_activity(t3_item_map, available_activity_stages):
     return filtered_t3_items
 
 
-def filter_latest_activity_t3_item_stage(my_items, available_activity_stages):
+def choose_activity_t3_stage_by_inventory(my_items, available_activity_stages):
     from Arknights.addons.contrib.activity import get_stage_map, get_activity_info
-    stage_code_map, zone_linear_map = get_stage_map()
-    t3_items = load_aog_data()['tier']['t3']
-    t3_ids = set([i['id'] for i in t3_items])
+    stage_code_map, _ = get_stage_map()
+    try:
+        t3_ids = get_t3_item_ids()
+    except Exception as e:
+        logger.warning('Failed to load T3 material IDs from game data: %s', e)
+        return None
+
     item_stage_map = {}
     for stage_code in available_activity_stages:
         stage = stage_code_map.get(stage_code)
         if stage is None:
             continue
-        rewards = stage['stageDropInfo'].get('displayDetailRewards')
+        rewards = (stage.get('stageDropInfo') or {}).get('displayDetailRewards')
         if not rewards:
             continue
-        now = time.time() * 1000
+        activity_info = get_activity_info(stage['zoneId'])
+        if activity_info is None:
+            continue
         for reward in rewards:
-            if reward["type"] == "MATERIAL" and reward["dropType"] == "NORMAL" and reward["id"] in t3_ids:
-                item_stage = item_stage_map.get(reward["id"])
-                stage['startTime'] = get_activity_info(stage['zoneId'])['startTime']
-                if stage['startTime'] > now + 48 * 3600 * 1000:
-                    continue
-                if item_stage is None:
-                    item_stage_map[reward['id']] = stage
-                elif stage['startTime'] > item_stage['startTime']:
-                    item_stage_map[reward['id']] = stage
-    logger.debug(f'item_stage_map: {[(k, item_stage_map[k]["code"]) for k in item_stage_map]}')
+            if reward.get("type") == "MATERIAL" and reward.get("dropType") == "NORMAL" and reward.get("id") in t3_ids:
+                item_id = reward["id"]
+                item_stage = item_stage_map.get(item_id)
+                start_time = activity_info['startTime']
+                if item_stage is None or start_time > item_stage['startTime']:
+                    item_stage_map[item_id] = {
+                        'stage': stage,
+                        'startTime': start_time,
+                    }
+    logger.debug(f'item_stage_map: {[(k, item_stage_map[k]["stage"]["code"]) for k in item_stage_map]}')
     if item_stage_map:
         for my_item in my_items:
             if my_item['itemId'] in item_stage_map:
-                return item_stage_map[my_item['itemId']]['code']
+                stage_code = item_stage_map[my_item['itemId']]['stage']['code']
+                logger.info('活动 T3 材料候选: %s, owned: %s, stage: %s',
+                            my_item['name'], my_item['count'], stage_code)
+                return stage_code
+
+
+filter_latest_activity_t3_item_stage = choose_activity_t3_stage_by_inventory
 
 
 def get_stage(t3_item_map, my_items, prefer_activity=True):
@@ -132,12 +151,12 @@ def get_stage(t3_item_map, my_items, prefer_activity=True):
             if filtered_t3_items:
                 return get_stage_with_action('auto_t3', my_items, filtered_t3_items)
             else:
-                stage = filter_latest_activity_t3_item_stage(my_items, available_activity_stages)
+                stage = choose_activity_t3_stage_by_inventory(my_items, available_activity_stages)
                 if stage:
-                    logger.info(f'没有在 aog 中找到活动关卡相关的材料, 尝试刷最近活动的 t3 材料关卡 [{stage}]')
+                    logger.info(f'没有在推荐源中找到活动关卡相关的材料, 尝试按库存刷活动 T3 材料关卡 [{stage}]')
                     return stage
-            logger.info('没有在 aog 中找到活动关卡相关的材料, 这可能是因为 aog 数据还没有更新, 或者这次活动关卡的效率还不如普通关卡.')
-            logger.info('可以试试在一段时间后删除 cache/aog_cache.json 以强制刷新 aog 数据缓存.')
+            logger.info('没有在推荐源中找到活动关卡相关的材料, 这可能是因为推荐数据还没有更新, 或者这次活动关卡的效率还不如普通关卡.')
+            logger.info('可以试试在一段时间后删除 cache/material_recommendation_yituliu.json 以强制刷新推荐缓存.')
             no_aog_data_action = app.config.grass_on_aog.no_aog_data_action
             logger.info(f'no_aog_data_action: {no_aog_data_action}.')
             return get_stage_with_action(no_aog_data_action, my_items, t3_item_map)
@@ -158,20 +177,8 @@ def get_stage_with_action(action, my_items, t3_item_map):
         return action
 
 
-def get_t3_item_map_from_yituliu():
-    # doc: https://github.com/Arknights-yituliu/BackEndV3/blob/main/src/main/java/com/lhs/controller/StageController.java
-    # item_cn_name: item_info
-    res = {}
-    resp = requests.get('https://backend.yituliu.cn/stage/t3?expCoefficient=0.625')
-    data = resp.json()['data']
-    for l1 in data:
-        for item in l1:
-            tmp = res.get(item['itemName'])
-            if not tmp:
-                res[item['itemName']] = item
-            elif item['stageEfficiency'] > tmp['stageEfficiency']:
-                res[item['itemName']] = item
-    return res
+def get_t3_item_map_from_recommendation():
+    return load_stage_recommendations(cache_key=cache_key)
 
 
 class GrassAddOn(AddonBase):
@@ -179,7 +186,11 @@ class GrassAddOn(AddonBase):
         exclude_names = app.config.grass_on_aog.exclude
         self.logger.info('不刷以下材料: %r', exclude_names)
         self.logger.info('加载库存信息...')
-        t3_item_map = get_t3_item_map_from_yituliu()
+        try:
+            t3_item_map = get_t3_item_map_from_recommendation()
+        except RecommendationError as e:
+            self.logger.warning('加载推荐源失败, 将按配置降级: %s', e)
+            t3_item_map = {}
 
         my_items = load_inventory(self.helper, cache_key=cache_key)
         all_items = arkplanner.get_all_items()
@@ -195,11 +206,26 @@ class GrassAddOn(AddonBase):
         my_items_with_count = sorted(my_items_with_count, key=lambda x: x['count'])
         return get_stage(t3_item_map, my_items_with_count, prefer_activity=app.config.grass_on_aog.prefer_activity_stage)
 
-    @custom_stage('grass', ignore_count=True, title='一键长草', description='检查库存中最少的蓝材料, 然后去 aog 上推荐的地图刷材料')
+    @custom_stage('grass', ignore_count=True, title='一键长草', description='检查库存中最少的蓝材料, 然后去推荐源给出的地图刷材料')
     def run(self, *args):
         stage = self.choose_stage()
         if stage:
-            return self.addon(StageNavigator).navigate_and_combat(stage, 1000)
+            try:
+                return self.addon(StageNavigator).navigate_and_combat(stage, 1000)
+            except Exception as exc:
+                from Arknights.addons.contrib.maa.maa_cli import MaaFightError
+
+                if not isinstance(exc, MaaFightError) or stage.upper() == MAA_FALLBACK_STAGE:
+                    raise
+                self.logger.warning(
+                    'MAA failed to proxy recommended stage %s; falling back to %s: %s',
+                    stage,
+                    MAA_FALLBACK_STAGE,
+                    exc,
+                )
+                return self.addon(StageNavigator).navigate_and_combat(
+                    MAA_FALLBACK_STAGE, 1000
+                )
 
 
 __all__ = ['GrassAddOn']
@@ -208,6 +234,6 @@ __all__ = ['GrassAddOn']
 if __name__ == '__main__':
     # from Arknights.configure_launcher import helper
     # helper.addon(GrassAddOn).run()
-    t3_item_map = get_t3_item_map_from_yituliu()
+    t3_item_map = get_t3_item_map_from_recommendation()
     for item_name in t3_item_map:
         print(item_name, t3_item_map[item_name]['stageCode'])

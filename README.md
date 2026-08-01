@@ -108,7 +108,7 @@ usage: akhelper.py command [command args]
         按顺序挑战指定关卡。
         TARGET_DESC 可以是：
             1-7 10      特定主线、活动关卡（1-7）10 次
-            grass       一键长草: 检查库存中最少的蓝材料, 然后去 aog 上推荐的地图刷材料
+            grass       一键长草: 检查库存中最少的蓝材料, 然后去推荐源给出的地图刷材料
             plan        执行刷图计划: 使用 arkplanner 命令创建刷图计划。执行过程会自动更新计划进度。
     recruit [tags ...]
         公开招募识别/计算，不指定标签则从截图中识别

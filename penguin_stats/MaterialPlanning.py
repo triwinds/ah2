@@ -11,7 +11,7 @@ LanguageMap = {'CN': 'zh', 'US': 'en', 'JP': 'ja', 'KR': 'ko'}
 
 path_stats = app.cache_path.joinpath('matrix_cache.json')
 path_rules = app.cache_path.joinpath('formula_cache.json')
-path_aog_stages = app.cache_path.joinpath('aog_stages_cache.json')
+path_recommended_stages = app.cache_path.joinpath('recommended_stages_cache.json')
 
 
 class MaterialPlanning(object):
@@ -33,7 +33,7 @@ class MaterialPlanning(object):
         self.banned_stages = banned_stages  # for debugging
         self.display_main_only = display_main_only
         self.ConvertionDR = ConvertionDR
-        self.aog_stages = []
+        self.recommended_stages = []
 
         self.update(force=update)
 
@@ -214,19 +214,18 @@ class MaterialPlanning(object):
         print(f'Start to update data {time.asctime(time.localtime(time.time()))}.')
         if not force:  # if not force to update, try loading data from file.
             try:
-                material_probs, self.convertion_rules, aog_stages = \
-                    load_data(path_stats, path_rules, path_aog_stages)
-                self.aog_stages = set(aog_stages)
-                # print(self.aog_stages)
+                material_probs, self.convertion_rules, recommended_stages = \
+                    load_data(path_stats, path_rules, path_recommended_stages)
+                self.recommended_stages = set(recommended_stages)
             except:  # loading failed, try loading from server.
                 force = True
         if force:  # load from server.
             try:
                 print('Requesting data from web resources (i.e., penguin-stats.io)...', end=' ')
                 arkplanner.update_cache()
-                material_probs, self.convertion_rules, self.aog_stages = request_data(penguin_url + url_stats,
-                                                                                      penguin_url + url_rules,
-                                                                                      path_stats, path_rules)
+                material_probs, self.convertion_rules, self.recommended_stages = request_data(penguin_url + url_stats,
+                                                                                              penguin_url + url_rules,
+                                                                                              path_stats, path_rules)
                 print('done.')
             except Exception as e:
                 raise e
@@ -333,7 +332,7 @@ class MaterialPlanning(object):
             convertion_cost_lst = self.convertion_cost_lst
 
         def alive(stage):
-            if self.aog_stages and self.stage_code[server][self.stage_dct_rv[stage]] not in self.aog_stages:
+            if self.recommended_stages and self.stage_code[server][self.stage_dct_rv[stage]] not in self.recommended_stages:
                 return False
             if stage in exclude:
                 return False
@@ -616,29 +615,23 @@ def request_data(url_stats, url_rules, save_path_stats, save_path_rules):
         with open(save_path_rules, 'w') as outfile:
             json.dump(convertion_rules, outfile)
 
-    url_aog = 'https://arkonegraph.herokuapp.com/total/CN'
-    req = urllib.request.Request(url_aog, None, headers)
-    with urllib.request.urlopen(req, timeout=5) as response:
-        response = urllib.request.urlopen(req)
-        aog_data = json.loads(response.read().decode())
-        tier = aog_data['tier']
-        aog_stages = set()
-        for i in range(1, 6):
-            t = tier['t%d' % i]
-            for item in t:
-                if item['lowest_ap_stages']:
-                    aog_stages.update([x['code'] for x in item['lowest_ap_stages']['normal']])
-                if item['balanced_stages']:
-                    aog_stages.update([x['code'] for x in item['balanced_stages']['normal']])
-                if item['drop_rate_first_stages']:
-                    aog_stages.update([x['code'] for x in item['drop_rate_first_stages']['normal']])
-        with open(path_aog_stages, 'w') as outfile:
-            json.dump(list(aog_stages), outfile)
+    recommended_stages = request_recommended_stages()
+    with open(path_recommended_stages, 'w') as outfile:
+        json.dump(list(recommended_stages), outfile)
 
-    return material_probs, convertion_rules, aog_stages
+    return material_probs, convertion_rules, recommended_stages
 
 
-def load_data(path_stats, path_rules, path_aog_stages):
+def request_recommended_stages():
+    try:
+        from Arknights.addons.contrib.material_recommendation import get_recommended_stage_codes
+        return get_recommended_stage_codes()
+    except Exception as e:
+        print(f'Failed to load recommended stages, continue without stage filtering: {e}')
+        return set()
+
+
+def load_data(path_stats, path_rules, path_recommended_stages):
     """
     To load stats and rules data from local directories.
     Args:
@@ -652,7 +645,10 @@ def load_data(path_stats, path_rules, path_aog_stages):
         material_probs = json.load(json_file)
     with open(path_rules) as json_file:
         convertion_rules = json.load(json_file)
-    with open(path_aog_stages) as json_file:
-        aog_stages = json.load(json_file)
+    try:
+        with open(path_recommended_stages) as json_file:
+            recommended_stages = json.load(json_file)
+    except FileNotFoundError:
+        recommended_stages = []
 
-    return material_probs, convertion_rules, aog_stages
+    return material_probs, convertion_rules, recommended_stages
