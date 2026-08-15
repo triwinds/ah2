@@ -361,9 +361,12 @@ class StageNavigator(AddonBase):
                 self.goto_latest_stage()
                 return self.addon(CombatAddon).combat_on_current_stage(set_count)
             if self.is_stage_supported(c_id):
-                # Avoid the Linux path that first navigates with one MAA session
-                # and then immediately starts a second session for the fight.
-                return self.addon(CombatAddon).combat_on_current_stage(set_count, c_id)
+                # Navigate with the selected AH2 handler first.  In particular,
+                # ActivityAddOn uses AH2 OCR to tap the concrete activity stage.
+                # MAA is only used after that to start combat on the current
+                # stage; passing c_id here would make MAA navigate again.
+                self.goto_stage(c_id)
+                return self.addon(CombatAddon).combat_on_current_stage(set_count)
             self.logger.error('不支持的关卡：%s', c_id)
             raise ValueError(c_id)
 

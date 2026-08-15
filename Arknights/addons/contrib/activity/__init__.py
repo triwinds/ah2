@@ -113,7 +113,7 @@ def load_detect_cache():
 def has_success_detect(zone_id):
     detect_cache = load_detect_cache()
     res = detect_cache.get(zone_id)
-    return res != [-1, -1]
+    return res is not None and res != [-1, -1]
 
 
 def get_detect_result_from_cache(zone_id):
@@ -166,14 +166,17 @@ class ActivityAddOn(AddonBase):
             if query_only:
                 return False
             raise
+        record_name = f'goto_{target_stage["stageType"]}_{target_stage["zoneId"]}'
+        if query_only:
+            # An active event stage must be handled by ActivityAddOn even
+            # before its first detect/record cache is created.  Otherwise the
+            # generic StartSpStageAddon claims it and asks MAA to navigate.
+            return True
         all_items_map = arkplanner.get_all_items_map()
         rewards = target_stage['stageDropInfo']['displayDetailRewards']
         # print(rewards)
         stage_drops = [all_items_map[reward["id"]]["name"] for reward in rewards
                        if reward["type"] == "MATERIAL" and reward["dropType"] == "NORMAL"]
-        record_name = f'goto_{target_stage["stageType"]}_{target_stage["zoneId"]}'
-        if query_only:
-            return self.addon(RecordAddon).get_record_path(record_name) or has_success_detect(target_stage["zoneId"])
         self.logger.info(f"{target_stage['code']}: {target_stage['name']}, 关卡掉落: {stage_drops}")
         if has_success_detect(target_stage["zoneId"]) or not self.addon(RecordAddon).get_record_path(record_name):
             pos = self.try_detect_and_enter_zone(target_stage)
