@@ -143,7 +143,7 @@ def update_pack(filename):
     need_update = True
     try:
         current_pack = requests.get('https://github.com/ArknightsAutoHelper/ArknightsAutoHelper/releases/download/riic_pack/riic_pack.xz').content
-        current_version = requests.get('https://raw.githubusercontent.com/yuanyan3060/Arknights-Bot-Resource/main/version').content.decode('utf-8').strip()
+        current_version = requests.get('https://ghfast.top/https://raw.githubusercontent.com/yuanyan3060/Arknights-Bot-Resource/main/version').content.decode('utf-8').strip()
         bio = io.BytesIO(lzma.decompress(current_pack))
         current_store = RestrictedUnpickler(bio).load()
         if current_store['pack_version'] == current_version:

@@ -6,13 +6,13 @@ import requests
 
 import app
 from automator import BaseAutomator
+from constants import GAME_DATA_URL
 import logging
 
 
 logger = logging.getLogger(__name__)
 app.init()
-game_data_url = app.get('game_data_url', 'https://rawgit.e6ex.com'
-                                         '/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel')
+game_data_url = GAME_DATA_URL
 
 
 def get_cache_path(cache_file_name):

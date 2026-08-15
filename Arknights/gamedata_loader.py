@@ -4,10 +4,11 @@ import requests_cache
 import json
 import datetime
 import time
+from constants import GAME_DATA_URL
 
 session = requests_cache.CachedSession(str(app.cache_path / 'gamedata'), backend='filesystem', cache_control=True)
 
-baseurl = 'https://gh.cirno.xyz/raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/'
+baseurl = GAME_DATA_URL + '/'
 
 _gamedata_version = ''
 _last_check = time.time() - 300

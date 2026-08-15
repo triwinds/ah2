@@ -82,14 +82,14 @@ def update_net():
     except:
         pass
     logger.info('检查物品识别模型更新')
-    resp = retry_get('https://gh.cirno.xyz/raw.githubusercontent.com/triwinds/arknights-ml/master/inventory/gen_time.txt')
+    resp = retry_get('https://ghfast.top/https://raw.githubusercontent.com/triwinds/arknights-ml/master/inventory/gen_time.txt')
     remote_time = int(resp.text)
     if remote_time > local_cache_time:
         from datetime import datetime
         logger.info(f'更新物品识别模型, 模型生成时间: {datetime.fromtimestamp(remote_time/1000).strftime("%Y-%m-%d %H:%M:%S")}')
         with open(material_model_gen_time_file, 'w', encoding='utf-8') as f:
             json.dump(remote_time, f, ensure_ascii=False)
-        resp = retry_get('https://gh.cirno.xyz/raw.githubusercontent.com/triwinds/arknights-ml/master/inventory/ark_material.onnx')
+        resp = retry_get('https://ghfast.top/https://raw.githubusercontent.com/triwinds/arknights-ml/master/inventory/ark_material.onnx')
         with open(net_file, 'wb') as f:
             f.write(resp.content)
         flag = False
