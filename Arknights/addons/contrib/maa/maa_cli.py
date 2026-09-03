@@ -144,7 +144,7 @@ def download_maa_cli():
     os.remove(zip_file)
     os.chmod(maa_path, 0o755)
     logger.info(f'maa-cli download to {maa_path}')
-    subprocess.run([maa_path, 'install'])
+    subprocess.run([maa_path, 'install', 'beta'])
     log_maa_cli_version()
 
 
@@ -563,24 +563,28 @@ def _parse_drop_items(text: str) -> list[Dict]:
 
 
 def update_maa():
-     # Update MAA core components
-    logger.info('Updating MAA core...')
+    # Keep maa-cli, MaaCore, and its bundled resources on the beta channel.
+    logger.info('Updating maa-cli (beta)...')
     process = subprocess.Popen([maa_path, 'self', 'update', 'beta'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
     out += err
-    update_core_output = out.decode()
-    if process.returncode != 0 or 'error' in update_core_output.lower():
-        logger.error(f'update MAA core failed: {update_core_output}')
+    update_cli_output = out.decode()
+    if process.returncode != 0 or 'error' in update_cli_output.lower():
+        logger.error(f'update maa-cli failed: {update_cli_output}')
     else:
-        logger.info('MAA core updated successfully')
-    process = subprocess.Popen([maa_path, 'update'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        logger.info('maa-cli updated successfully')
+
+    logger.info('Updating MAA core and resources (beta)...')
+    process = subprocess.Popen([maa_path, 'update', 'beta'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
     out += err
     update_output = out.decode()
     if process.returncode != 0 or 'error' in update_output.lower():
-        logger.error(f'update maa-cli failed: {update_output}')
+        logger.error(f'update MAA core and resources failed: {update_output}')
         logger.info('trying to reinstall maa-cli and maa without removing the current binary first...')
         download_maa_cli()
+    else:
+        logger.info('MAA core and resources updated successfully')
 
 
 if __name__ == '__main__':

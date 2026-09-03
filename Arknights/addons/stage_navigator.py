@@ -361,10 +361,15 @@ class StageNavigator(AddonBase):
                 self.goto_latest_stage()
                 return self.addon(CombatAddon).combat_on_current_stage(set_count)
             if self.is_stage_supported(c_id):
-                # Navigate with the selected AH2 handler first.  In particular,
-                # ActivityAddOn uses AH2 OCR to tap the concrete activity stage.
-                # MAA is only used after that to start combat on the current
-                # stage; passing c_id here would make MAA navigate again.
+                # MaaCore can navigate built-in stages itself.  Passing the
+                # stage here avoids relying on ``fight --times 0`` as a
+                # navigation-only command, which MaaCore does not support.
+                if get_stage_path(c_id) is not None:
+                    return self.addon(CombatAddon).combat_on_current_stage(set_count, c_id)
+
+                # Event data in MaaCore can lag behind the game.  Let the
+                # selected AH2 handler navigate event/special stages, then ask
+                # MAA to fight the stage currently shown on screen.
                 self.goto_stage(c_id)
                 return self.addon(CombatAddon).combat_on_current_stage(set_count)
             self.logger.error('不支持的关卡：%s', c_id)
